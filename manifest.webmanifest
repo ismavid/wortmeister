@@ -1,0 +1,16 @@
+{
+  "name": "Wortmeister — Deutsch B2",
+  "short_name": "Wortmeister",
+  "description": "German A1–B2 vocabulary trainer for the Goethe-Zertifikat B2",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0f19",
+  "theme_color": "#0b0f19",
+  "lang": "de",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
