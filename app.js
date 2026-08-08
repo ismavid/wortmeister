@@ -29,12 +29,19 @@ const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
 const MODE_LABEL = {
   de2en: 'DE → EN', en2de: 'EN → DE', type: 'Schreiben', article: 'Artikel'
 };
+/* The ambient light behind the glass takes the colour of the current word's
+   level, so the card you are on is legible before you have read anything. */
+const LEVEL_TINT = { A1: '#30d158', A2: '#64d2ff', B1: '#ff9f0a', B2: '#bf5af2' };
 
 /* ============================ tiny DOM ============================ */
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function setTint(level) {
+  const el = $('#ambient');
+  if (el) el.style.setProperty('--tint', LEVEL_TINT[level] || '#0a84ff');
+}
 let toastT;
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -536,6 +543,7 @@ document.addEventListener('click', e => {
 /* ============================ home ============================ */
 const CIRC = 2 * Math.PI * 80;
 function renderHome() {
+  setTint(null);
   const scoped = A.words.filter(inScope);
   let known = 0, learning = 0, triaged = 0;
   for (const w of scoped) {
@@ -610,11 +618,11 @@ function isStandalone() {
     window.matchMedia('(display-mode: standalone)').matches;
 }
 function installBanner() {
-  return `<div class="card" style="border-color:var(--gold)">
-    <b style="display:block;margin-bottom:6px">Zum Home-Bildschirm hinzufügen</b>
+  return `<div class="note">
+    <b>Zum Home-Bildschirm hinzufügen</b>
     <p class="sub" style="margin:0">Safari löscht alle Daten dieser Seite nach 7 Tagen.
     Als App auf dem Home-Bildschirm bleibt dein Fortschritt erhalten.<br><br>
-    Teilen-Symbol <b>⎋</b> → „Zum Home-Bildschirm“.</p></div>`;
+    Teilen-Symbol ⎋ → „Zum Home-Bildschirm“.</p></div>`;
 }
 
 /* ============================ triage ============================ */
@@ -634,6 +642,7 @@ function nextTriage() {
   const w = TG.list[TG.i];
   $('#tg-word').textContent = display(w);
   const lv = w.level.replace('*', '');
+  setTint(lv);
   $('#tg-lvl').textContent = lv;
   $('#tg-lvl').className = 'pill p-' + lv;
   $('#tg-fach').textContent = w.fach ? 'Fachdeutsch' : '';
@@ -717,6 +726,7 @@ function showCard() {
   ST.t0 = performance.now();
 
   const lv = w.level.replace('*', '');
+  setTint(lv);
   $('#st-lvl').textContent = lv;
   $('#st-lvl').className = 'pill p-' + lv;
   $('#st-mode').textContent = MODE_LABEL[ST.mode];
@@ -859,8 +869,9 @@ function submitTyped() {
     showResult(true, 'Fast richtig',
       'Schreibweise: <i>' + esc(res.expected) + '</i>');
   } else {
+    // the card face already shows the word — the banner would only repeat it
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Richtig', esc(res.expected));
+    showResult(true, 'Richtig', '');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -876,7 +887,7 @@ function submitArticle(picked) {
   const ok = picked === w.article;
   const grade = ok ? adjustGrade(G.GOOD, ST.elapsed, ST.mode) : G.AGAIN;
   showResult(ok, ok ? 'Richtig' : 'Nicht ganz',
-    '<i>' + esc(w.article + ' ' + w.lemma) + '</i>');
+    ok ? '' : '<i>' + esc(w.article + ' ' + w.lemma) + '</i>');
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
 }
@@ -1005,9 +1016,8 @@ function renderStats() {
 /* ============================ settings ============================ */
 function renderSettings() {
   $('#installcard').innerHTML = isStandalone()
-    ? `<div class="card" style="border-color:var(--green)">
-         <b style="color:var(--green)">✓ Als App installiert</b>
-         <p class="sub" style="margin:6px 0 0">Deine Daten sind vor Safaris
+    ? `<div class="note ok"><b>✓ Als App installiert</b>
+         <p class="sub" style="margin:0">Deine Daten sind vor Safaris
          7-Tage-Löschung geschützt.</p></div>`
     : installBanner();
 
