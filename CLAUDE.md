@@ -4,7 +4,7 @@ German A1–B2 vocabulary trainer. Static PWA on GitHub Pages, mobile-first,
 built for **Ismael's Goethe-Zertifikat B2 on 11 November 2026**.
 
 Read `docs/PLAN.md` for the full design rationale before making architectural
-changes. Phases 1 and 2 are shipped; Phase 3 is specified below.
+changes. Phases 1, 2 and 3 are all shipped.
 
 ---
 
@@ -49,7 +49,7 @@ app.js                  all logic, ~950 lines, sectioned by banner comments
 sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
-test/test_app.js        153 assertions, jsdom + fake-indexeddb
+test/test_app.js        270 assertions, jsdom + fake-indexeddb
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
 ```
@@ -152,11 +152,47 @@ brand-new card graded Hard.
 Both auto-graded modes route through `commitAnswer()`, the same path the flip
 grade buttons use, so scheduling behaviour cannot drift between modes.
 
-## Then: Phase 3
+## Shipped: Phase 3
 
-Verb-form drill (Präteritum + Partizip II + auxiliary from the infinitive),
-Verb+Präposition fill-in-the-blank off `data.verbPrep` (149 patterns),
-richer stats, leech rehabilitation flow.
+1. **Verb forms** (`verb`). Infinitive prompts; Präteritum and Partizip II are
+   typed, the auxiliary is picked. 2,069 verbs carry both principal parts.
+   Typo tolerance is **narrower than typing mode**: `matchVerbForm()` rejects a
+   single swapped vowel, because in a verb form that vowel is the ablaut —
+   `fang an` is a different form of *anfangen*, not a misspelling of `fing an`.
+   Dropped letters stay forgiven.
+2. **Rection** (`rection`). Pick the governed preposition from four options,
+   then the case. A wrong preposition ends the card without asking for the
+   case. Patterns whose case is `—` (`gelten als`) skip the case step.
+3. **Leech rehabilitation.** `rehabLeech()` returns a suspended word to
+   `queued` with `l = 0`, `r = 0` and ease lifted to at least 2.0, so it climbs
+   the mode progression from recognition again. Tap a word under Statistik, or
+   rehabilitate all at once.
+4. **Richer stats.** Retention over 30 days (`h.again` in the history record),
+   projected completion date against the exam date, per-mode medians.
+
+### The `aux` column is not trustworthy
+
+A spot check of 29 unambiguous *sein*-verbs found **7 marked `haben`**
+(`aufstehen`, `passieren`, `abfahren`, `rennen`, `fliegen`, `umziehen`,
+`fahren`). `AUX_OVERRIDE` in app.js carries verified corrections and marks
+genuinely dual verbs `'both'`, where either auxiliary is accepted. It is a
+patch, not a fix — the real fix is a rebuild in `tools/vocab-build`. Do not
+widen the verb drill's reach without revisiting this.
+
+### verbPrep quirks
+
+Rows are `[verb, preposition, case, gloss, example]`. Reflexive entries are
+stored as `sich ärgern` while the word list holds the bare lemma, so
+`indexRection()` strips `sich ` — that lifts linkage from 86/149 to 146/149.
+Two rows carry `"D"` instead of a preposition (`sich widmen`, `zustimmen`);
+those verbs take a bare dative object and are dropped. The word-level
+`rection` column ships **empty on all 10,390 rows** — never read it.
+
+## Then: Phase 4
+
+Nothing is specified. Candidates: pulling B2-extended into scope once the core
+set is cleared, an adjective-declension drill, and a `vocab.v2.json` rebuild
+that fixes the auxiliaries.
 
 ---
 

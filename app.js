@@ -623,10 +623,12 @@ function pickMode(w) {
 }
 
 /* ============================ history / streak ============================ */
-function logAnswer(isNew) {
+function logAnswer(isNew, grade) {
   const d = today();
-  const h = A.set.history[d] || (A.set.history[d] = { new: 0, rev: 0 });
+  const h = A.set.history[d] || (A.set.history[d] = { new: 0, rev: 0, again: 0 });
+  if (h.again === undefined) h.again = 0;   // records written before v1.2
   if (isNew) h.new++; else h.rev++;
+  if (grade === G.AGAIN) h.again++;
   if (A.set.lastDay !== d) {
     const y = today(Date.now() - CFG.DAY);
     A.set.streak = (A.set.lastDay === y) ? (A.set.streak + 1) : 1;
@@ -654,6 +656,43 @@ function paceSeries(days) {
     out.push({ key, n: (A.set.history[key] || {}).new || 0 });
   }
   return out;
+}
+
+/** Share of answers not graded Again, over the last `days`. Null with no data. */
+function retention(days) {
+  let total = 0, again = 0;
+  for (let i = 0; i < days; i++) {
+    const h = A.set.history[today(Date.now() - i * CFG.DAY)];
+    if (!h) continue;
+    total += (h.new || 0) + (h.rev || 0);
+    again += h.again || 0;
+  }
+  return total ? (total - again) / total : null;
+}
+
+/** Days to clear the remaining queue at the recent pace, or null if stalled. */
+function projectedDays() {
+  const pace = recentPace(7);
+  if (pace <= 0) return null;
+  return Math.ceil(remainingToLearn() / pace);
+}
+
+/* A leech has failed eight times; returning it to its old interval would just
+   fail it a ninth. Rehabilitation restarts it at recognition with the lapse
+   counter cleared and a mid-range ease, so it climbs the modes again. */
+function rehabLeech(id) {
+  const st = A.state.get(id);
+  if (!st || st.s !== 'leech') return false;
+  st.s = 'queued';
+  st.l = 0; st.r = 0; st.p = -1; st.i = 0; st.d = 0;
+  st.e = clampEase(Math.max(st.e, 2.0));
+  setState(id, st);
+  return true;
+}
+function rehabAllLeeches() {
+  let n = 0;
+  for (const id of Array.from(A.state.keys())) if (rehabLeech(id)) n++;
+  return n;
 }
 
 /** Average new words per day, over days actually elapsed rather than a flat 7. */
@@ -990,7 +1029,7 @@ function commitAnswer(w, grade, elapsed) {
   applyGrade(st, grade, Date.now());
   setState(w.id, st);
   requeueIfSoon(w, st);
-  logAnswer(wasNew);
+  logAnswer(wasNew, grade);
   ST.done++;
   ST.i++;
 }
@@ -1005,7 +1044,7 @@ $$('[data-grade]').forEach(b => b.addEventListener('click', () => {
     if (!st) st = newState();
     st.s = 'known';
     setState(w.id, st);
-    logAnswer(wasNew);
+    logAnswer(wasNew, null);
     ST.done++;
     ST.i++;
   } else {
@@ -1280,6 +1319,17 @@ function renderStats() {
 
   const secs = m => (medianFor(m) / 1000).toFixed(1) + ' s';
 
+  const ret = retention(30);
+  const left = remainingToLearn();
+  const proj = projectedDays();
+  const dte = daysToExam();
+  const fmt = ms => new Date(ms).toLocaleDateString('de-DE',
+    { day: 'numeric', month: 'short', year: 'numeric' });
+  const projLabel = proj == null ? 'noch keine Daten' : fmt(Date.now() + proj * CFG.DAY);
+  const projColor = proj == null ? 'var(--dim)'
+    : (proj <= dte ? 'var(--green)' : 'var(--gold)');
+  const examLabel = fmt(new Date(A.set.exam + 'T09:00:00').getTime());
+
   $('#stats-body').innerHTML = `
     <h2>Wortstatus</h2>
     <div class="card">
@@ -1306,11 +1356,45 @@ function renderStats() {
       <div class="stat"><span>Median EN → DE</span><b>${secs('en2de')}</b></div>
       <div class="stat"><span>Median Schreiben</span><b>${secs('type')}</b></div>
       <div class="stat"><span>Median Artikel</span><b>${secs('article')}</b></div>
+      <div class="stat"><span>Median Formen</span><b>${secs('verb')}</b></div>
+      <div class="stat"><span>Median Präposition</span><b>${secs('rection')}</b></div>
     </div>
-    ${leeches.length ? `<h2>Schwierige Wörter</h2><div class="card">${leeches.slice(0, 40)
-      .map(w => `<div class="stat"><span>${esc(display(w))}</span><b style="font-weight:600;font-size:13px;color:var(--dim)">${esc(w.en)}</b></div>`)
-      .join('')}</div>` : ''}`;
+    <h2>Prognose</h2>
+    <div class="card">
+      <div class="stat"><span>Behalten (30 Tage)</span><b>${
+        ret == null ? '–' : Math.round(ret * 100) + ' %'}</b></div>
+      <div class="stat"><span>Noch zu lernen</span><b>${left.toLocaleString('de')}</b></div>
+      <div class="stat"><span>Fertig am</span><b style="color:${projColor}">${projLabel}</b></div>
+      <div class="stat"><span>Prüfung</span><b>${examLabel}</b></div>
+    </div>
+    ${leeches.length ? `<h2>Schwierige Wörter</h2>
+      <p class="sub" style="margin:0 0 6px">Achtmal falsch und pausiert.
+      Tippe ein Wort, um es neu zu starten.</p>
+      <div class="card">${leeches.slice(0, 40).map(w => {
+        const lv = w.level.replace('*', '');
+        return `<div class="wrow" data-leech="${w.id}">
+          <span class="pill p-${lv}">${lv}</span>
+          <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
+          <span style="color:var(--blue-lt);font-size:13px">neu starten</span>
+        </div>`;
+      }).join('')}</div>
+      <button class="btn ghost sm" id="leech-all" style="margin-top:10px">
+        Alle ${leeches.length} wieder aufnehmen</button>` : ''}`;
 }
+
+$('#stats-body').addEventListener('click', e => {
+  if (e.target.closest('#leech-all')) {
+    const n = rehabAllLeeches();
+    toast(n + ' Wörter wieder aufgenommen');
+    renderStats();
+    return;
+  }
+  const row = e.target.closest('[data-leech]');
+  if (!row) return;
+  const id = +row.dataset.leech;
+  if (rehabLeech(id)) toast(display(A.words[id]) + ' — neu gestartet');
+  renderStats();
+});
 
 /* ============================ settings ============================ */
 function renderSettings() {
@@ -1429,5 +1513,6 @@ window.__wm = {
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,
   checkVerbForms, checkRection,
-  prepChoices, verbFormsLine, blankExample, rectionAnswer, grammar
+  prepChoices, verbFormsLine, blankExample, rectionAnswer, grammar,
+  retention, projectedDays, rehabLeech, rehabAllLeeches, renderStats, logAnswer
 };

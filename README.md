@@ -58,15 +58,19 @@ production as you answer it:
 | 2–4 | Karte EN → DE | `business, operation` | tap to flip, then rate |
 | 5+ | Schreiben | `to develop` | type the German |
 | from 2 | Artikel | `Bewerbung` | tap der / die / das |
+| from 3 | Formen | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
+| from 3 | Präposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
 
-Nouns interleave the article drill from rep 2, taking every third slot, so
-gender gets its own repetitions without stalling the progression.
+Specialist drills take every third slot rather than replacing the progression:
+nouns from rep 2 (gender), verbs from rep 3 (forms, and the governed
+preposition where one exists). A verb with both alternates between them.
 
-**Schreiben and Artikel grade themselves** — no buttons. Wrong is *Nochmal*,
-right is *Gut*, and the same response-time median that adjusts the flip modes
-promotes a fast answer to *Einfach* or demotes a slow one to *Schwer*.
+**Every mode except the flip cards grades itself** — no buttons. Wrong is
+*Nochmal*, right is *Gut*, and the same response-time median that adjusts the
+flip modes promotes a fast answer to *Einfach* or demotes a slow one to
+*Schwer*.
 
-Typing is forgiving about spelling but not about grammar:
+Spelling is forgiven; grammar is not:
 
 - case-insensitive, surrounding whitespace ignored
 - `ae` `oe` `ue` `ss` accepted for `ä` `ö` `ü` `ß`, and vice versa
@@ -74,6 +78,29 @@ Typing is forgiving about spelling but not about grammar:
   *Schwer* and shows the correct spelling
 - **nouns need their article.** `die Betrieb` is wrong, not a typo — der/die/das
   is the thing being tested, so it never gets the one-typo allowance
+- **verb forms lose the allowance on the ablaut vowel.** `fang an` is not a
+  misspelling of `fing an`, it is a different form. A dropped letter is still
+  forgiven
+- a wrong preposition ends a Präposition card immediately; the case question
+  only makes sense once the preposition is right
+
+### A caveat on the auxiliary
+
+The `aux` column comes from the build pipeline and is wrong for a number of
+verbs — a check of 29 unambiguous *sein*-verbs found 7 marked `haben`. The app
+carries verified corrections and accepts either auxiliary for genuinely dual
+verbs like `fahren`, but the underlying data still needs a rebuild. If a
+*Formen* card marks you wrong on an auxiliary you are sure about, you are
+probably right.
+
+---
+
+## Difficult words
+
+Eight lapses suspend a word as a *leech* so twenty impossible words cannot eat
+your session. They are listed under Statistik — tap one to restart it, or
+restart all of them at once. A restarted word returns to the front of the
+queue at recognition with its lapse count cleared, and climbs the modes again.
 
 ---
 
@@ -143,11 +170,11 @@ update never invalidates progress.
 cd test && npm install && node test_app.js
 ```
 
-153 assertions: data-file integrity, boot, triage persistence through a fake
+270 assertions: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
-tolerance, mode progression, and both auto-graded modes driven through the real
-DOM handlers.
+tolerance, mode progression, leech rehabilitation, retention and projection
+maths, and all four auto-graded modes driven through the real DOM handlers.
 
 The suite pins `TZ=America/Bogota`, because the local-vs-UTC date bug it guards
 against is only observable at a non-zero UTC offset.
@@ -156,6 +183,7 @@ against is only observable at a non-zero UTC offset.
 
 ## Not in this build
 
-Phase 3: verb-form drill (Präteritum + Partizip II + auxiliary), Verb +
-Präposition fill-in-the-blank off the 149 curated patterns, richer stats,
-leech rehabilitation.
+All three planned phases are shipped. Still open: a `vocab.v2.json` rebuild to
+fix the auxiliaries, an adjective-declension drill, and pulling the 3,354
+B2-extended words into the study queue once the core set is cleared (the switch
+already exists under Einstellungen → Umfang).

@@ -699,6 +699,86 @@ function A_extendedSample(w){
   ok('re-entry is capped per word', M.ST.queue.length <= 1 + M.CFG.MAX_REENTRY,
     M.ST.queue.length);
 
+  // ------------------------------------------------------- leech rehab
+  console.log('\n== leech rehabilitation ==');
+  M.A.state.clear(); M.A.dirty.clear();
+  const leechId = plainWord.id, okId = nounWord.id;
+  M.A.state.set(leechId, { s: 'leech', e: 1.4, i: 30, d: Date.now() + 3e10, r: 12, l: 8, p: -1, m: {}, t: 0 });
+  M.A.state.set(okId, { s: 'review', e: 2.5, i: 10, d: Date.now() + 1e9, r: 4, l: 1, p: -1, m: {}, t: 0 });
+
+  ok('a leech is excluded from the due list',
+    !M.dueList(Date.now() + 4e10).some(x => x.id === leechId));
+  ok('rehabilitation reports success', M.rehabLeech(leechId) === true);
+  let reh = M.A.state.get(leechId);
+  ok('a rehabilitated leech is queued again', reh.s === 'queued', reh.s);
+  ok('its lapse counter is cleared', reh.l === 0, reh.l);
+  ok('its reps restart so it returns to recognition', reh.r === 0, reh.r);
+  ok('it is asked as a flip card again', M.pickMode(plainWord) === 'de2en',
+    M.pickMode(plainWord));
+  ok('its ease is lifted out of the floor', reh.e >= 2.0, reh.e);
+  ok('its ease stays within the clamp', reh.e <= M.CFG.EASE_MAX, reh.e);
+  ok('it is no longer suspended far in the future', reh.d === 0, reh.d);
+  ok('a rehabilitated word re-enters the new queue',
+    M.queuedNew().some(x => x.id === leechId));
+  ok('rehabilitating a non-leech does nothing', M.rehabLeech(okId) === false);
+  ok('the non-leech is untouched', M.A.state.get(okId).l === 1);
+
+  M.A.state.set(leechId, { s: 'leech', e: 1.3, i: 30, d: Date.now(), r: 9, l: 9, p: -1, m: {}, t: 0 });
+  M.A.state.set(verbForms.id, { s: 'leech', e: 1.3, i: 30, d: Date.now(), r: 9, l: 8, p: -1, m: {}, t: 0 });
+  ok('rehabilitating all reports the count', M.rehabAllLeeches() === 2);
+  ok('no leeches remain', ![...M.A.state.values()].some(v => v.s === 'leech'));
+  ok('rehabilitating all again is a no-op', M.rehabAllLeeches() === 0);
+
+  // the flow through the real Statistik DOM
+  M.A.state.set(leechId, { s: 'leech', e: 1.3, i: 30, d: Date.now(), r: 9, l: 8, p: -1, m: {}, t: 0 });
+  click('[data-go="stats"]'); await sleep(50);
+  ok('the leech is listed under Statistik',
+    !!w.document.querySelector(`[data-leech="${leechId}"]`));
+  ok('a rehab-all control is offered', !!el('leech-all'));
+  click(`[data-leech="${leechId}"]`); await sleep(40);
+  ok('tapping a leech rehabilitates it',
+    M.A.state.get(leechId).s === 'queued', M.A.state.get(leechId).s);
+  ok('the list clears once nothing is suspended',
+    !w.document.querySelector('[data-leech]'));
+
+  // ------------------------------------------------------- richer stats
+  console.log('\n== retention and projection ==');
+  const hb2 = M.A.set.history;
+  M.A.set.history = {};
+  ok('retention is null with no history', M.retention(30) === null);
+  M.A.set.history[M.today()] = { new: 10, rev: 30, again: 4 };
+  ok('retention counts every graded answer',
+    Math.abs(M.retention(30) - 0.9) < 1e-9, M.retention(30));
+  M.A.set.history[M.today(Date.now() - 86400000)] = { new: 0, rev: 60, again: 26 };
+  ok('retention spans the window',
+    Math.abs(M.retention(30) - 0.7) < 1e-9, M.retention(30));
+  ok('a day outside the window is ignored',
+    Math.abs(M.retention(1) - 0.9) < 1e-9, M.retention(1));
+  M.A.set.history = { [M.today()]: { new: 5, rev: 5 } };
+  ok('records without an again count are treated as zero',
+    M.retention(30) === 1, M.retention(30));
+
+  M.A.set.history = {};
+  ok('projection is null with no pace', M.projectedDays() === null);
+  M.A.set.history[M.today()] = { new: 25, rev: 0, again: 0 };
+  const pd = M.projectedDays();
+  ok('projection is a positive number of days', pd > 0, pd);
+  ok('projection follows the remaining queue',
+    pd === Math.ceil(M.remainingToLearn() / M.recentPace(7)), pd);
+
+  // logAnswer must feed the retention counter
+  M.A.set.history = {};
+  M.logAnswer(false, M.G.AGAIN);
+  M.logAnswer(false, M.G.GOOD);
+  M.logAnswer(true, M.G.GOOD);
+  const hToday = M.A.set.history[M.today()];
+  ok('answers are counted by kind',
+    hToday.new === 1 && hToday.rev === 2, JSON.stringify(hToday));
+  ok('only Again increments the lapse counter', hToday.again === 1, hToday.again);
+  ok('retention reflects the logged answers',
+    Math.abs(M.retention(30) - 2 / 3) < 1e-9, M.retention(30));
+  M.A.set.history = hb2;
+
   // restore a normal-looking state for the remaining view assertions
   M.A.state.clear(); M.A.dirty.clear();
   for (let n = 0; n < 30; n++) {
