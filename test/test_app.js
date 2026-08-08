@@ -331,10 +331,18 @@ function A_extendedSample(w){
 
   // ------------------------------------------------------- mode progression
   console.log('\n== mode progression ==');
-  const plainWord = M.A.words.find(x => x.pos === 'verb' && M.inScope(x) && /^[a-z]{7,}$/i.test(x.lemma));
+  // a word with no specialist drill of its own, so it shows the base progression
+  const plainWord = M.A.words.find(x => x.pos !== 'verb' && x.pos !== 'noun' &&
+    M.inScope(x) && /^[a-z]{7,}$/i.test(x.lemma));
   const nounWord = M.A.words.find(x => M.isDrillableNoun(x) && M.inScope(x) && /^[a-zA-Z]{7,}$/.test(x.lemma));
-  ok('found a plain verb to drill', !!plainWord, plainWord && plainWord.lemma);
+  const verbForms = M.A.words.find(x => M.hasVerbForms(x) && M.inScope(x) &&
+    !M.rectionFor(x) && /^[a-z]{6,12}$/i.test(x.lemma) &&
+    /^[a-zäöüß]+$/i.test(x.prt) && /^[a-zäöüß]+$/i.test(x.pp));
+  const verbRect = M.A.words.find(x => M.hasVerbForms(x) && M.rectionFor(x) && M.inScope(x));
+  ok('found a plain word to drill', !!plainWord, plainWord && plainWord.pos + ' ' + plainWord.lemma);
   ok('found a noun to drill', !!nounWord, nounWord && nounWord.article + ' ' + nounWord.lemma);
+  ok('found a verb with forms only', !!verbForms, verbForms && verbForms.lemma);
+  ok('found a verb with a governed preposition', !!verbRect, verbRect && verbRect.lemma);
 
   const stage = (word, reps) => {
     M.A.state.clear(); M.A.dirty.clear();
@@ -349,6 +357,17 @@ function A_extendedSample(w){
   ok('reps 4 is flip EN→DE', modeAt(plainWord, 4) === 'en2de');
   ok('reps 5 is typing', modeAt(plainWord, 5) === 'type', modeAt(plainWord, 5));
   ok('reps 9 is still typing', modeAt(plainWord, 9) === 'type');
+  ok('a verb keeps the base progression at reps 4', modeAt(verbForms, 4) === 'en2de');
+  ok('a verb keeps the base progression at reps 5', modeAt(verbForms, 5) === 'type');
+  ok('a verb takes the form drill at reps 3', modeAt(verbForms, 3) === 'verb',
+    modeAt(verbForms, 3));
+  ok('a verb takes the form drill again at reps 6', modeAt(verbForms, 6) === 'verb');
+  ok('a verb with both drills starts on the preposition',
+    modeAt(verbRect, 3) === 'rection', modeAt(verbRect, 3));
+  ok('a verb with both drills alternates to forms at reps 6',
+    modeAt(verbRect, 6) === 'verb', modeAt(verbRect, 6));
+  ok('a verb with both drills alternates back at reps 9',
+    modeAt(verbRect, 9) === 'rection', modeAt(verbRect, 9));
   ok('a noun starts on flip too', modeAt(nounWord, 0) === 'de2en');
   ok('a noun interleaves the article drill from rep 2',
     modeAt(nounWord, 2) === 'article', modeAt(nounWord, 2));
@@ -454,6 +473,217 @@ function A_extendedSample(w){
     click('#st-continue');
     return el('st-result').classList.contains('hidden');
   })());
+
+  // ------------------------------------------------------- verb forms
+  console.log('\n== verb forms ==');
+  ok('a verb with both parts is drillable', M.hasVerbForms(verbForms));
+  ok('a noun is not form-drillable', !M.hasVerbForms(nounWord));
+  ok('a verb missing a participle is not drillable',
+    !M.hasVerbForms({ pos: 'verb', prt: 'ging', pp: '' }));
+
+  ok('a verified wrong auxiliary is corrected',
+    M.auxFor({ lemma: 'aufstehen', aux: 'haben' }) === 'sein',
+    M.auxFor({ lemma: 'aufstehen', aux: 'haben' }));
+  ok('a correct auxiliary passes through',
+    M.auxFor({ lemma: 'gehen', aux: 'sein' }) === 'sein');
+  ok('a genuinely dual verb reports both',
+    M.auxFor({ lemma: 'fahren', aux: 'haben' }) === 'both');
+
+  ok('matchForm accepts the exact form', M.matchForm('ging', 'ging') === 'exact');
+  ok('matchForm is case-insensitive', M.matchForm('GING', 'ging') === 'exact');
+  ok('matchForm collapses the space in a separable form',
+    M.matchForm('fing   an', 'fing an') === 'exact');
+  ok('matchForm folds umlauts', M.matchForm('schloss', 'schloß') === 'exact');
+  ok('matchForm allows one typo above 5 chars',
+    M.matchForm('angefanen', 'angefangen') === 'near');
+  ok('matchForm rejects a short near-miss', M.matchForm('gang', 'ging') === 'wrong');
+  ok('matchForm rejects an empty answer', M.matchForm('', 'ging') === 'wrong');
+
+  // the ablaut vowel is the content of the form, not a spelling detail
+  ok('a swapped vowel is detected', M.vowelSwap('fang an', 'fing an') === true);
+  ok('a dropped letter is not a vowel swap', M.vowelSwap('angefanen', 'angefangen') === false);
+  ok('two differences are not a vowel swap', M.vowelSwap('fang en', 'fing an') === false);
+  ok('a consonant swap is not a vowel swap', M.vowelSwap('finf an', 'fing an') === false);
+  ok('a swapped ablaut vowel is wrong, not a typo',
+    M.matchVerbForm('fang an', 'fing an') === 'wrong', M.matchVerbForm('fang an', 'fing an'));
+  ok('a dropped letter is still forgiven in a verb form',
+    M.matchVerbForm('angefanen', 'angefangen') === 'near');
+  ok('the exact verb form still passes', M.matchVerbForm('fing an', 'fing an') === 'exact');
+
+  const VB = { pos: 'verb', lemma: 'anfangen', prt: 'fing an', pp: 'angefangen', aux: 'haben' };
+  ok('all three parts correct passes',
+    M.checkVerbForms(VB, 'fing an', 'angefangen', 'haben').ok &&
+    !M.checkVerbForms(VB, 'fing an', 'angefangen', 'haben').near);
+  ok('a wrong Präteritum fails', !M.checkVerbForms(VB, 'fang an', 'angefangen', 'haben').ok);
+  ok('a wrong Partizip fails', !M.checkVerbForms(VB, 'fing an', 'gefangen', 'haben').ok);
+  ok('a wrong auxiliary fails', !M.checkVerbForms(VB, 'fing an', 'angefangen', 'sein').ok);
+  ok('the auxiliary alone can fail an otherwise perfect answer',
+    M.checkVerbForms(VB, 'fing an', 'angefangen', 'sein').auxOk === false);
+  ok('one typo in a form is a near miss',
+    M.checkVerbForms(VB, 'fing an', 'angefanen', 'haben').near === true);
+  const DUAL = { pos: 'verb', lemma: 'fahren', prt: 'fuhr', pp: 'gefahren', aux: 'haben' };
+  ok('a dual verb accepts haben', M.checkVerbForms(DUAL, 'fuhr', 'gefahren', 'haben').ok);
+  ok('a dual verb also accepts sein', M.checkVerbForms(DUAL, 'fuhr', 'gefahren', 'sein').ok);
+  ok('the forms line shows both for a dual verb',
+    M.verbFormsLine(DUAL) === 'fuhr · gefahren · haben/sein', M.verbFormsLine(DUAL));
+
+  // ------------------------------------------------------- rection
+  console.log('\n== rection ==');
+  ok('preposition patterns are indexed', M.A.prepBy.size > 80, M.A.prepBy.size);
+  ok('reflexive entries are indexed under the bare lemma',
+    M.A.prepBy.has('bewerben'), [...M.A.prepBy.keys()].slice(0, 3).join(','));
+  const allPats = [...M.A.prepBy.values()].flat();
+  ok('bare-dative rows are excluded from the drill',
+    allPats.every(p => p.prep !== 'D'), allPats.filter(p => p.prep === 'D').length);
+  ok('the reflexive flag survives indexing',
+    M.A.prepBy.get('bewerben').some(p => p.reflexive === true));
+  ok('every indexed pattern carries a case field',
+    allPats.every(p => typeof p.kase === 'string' && p.kase.length > 0));
+
+  const PAT = { prep: 'um', kase: 'Akkusativ', en: 'to apply for', ex: 'Ich bewerbe mich um eine Stelle.', reflexive: true };
+  const NOCASE = { prep: 'als', kase: '—', en: 'to be regarded as', ex: 'Er gilt als Experte.', reflexive: false };
+  ok('the right preposition and case passes', M.checkRection(PAT, 'um', 'Akkusativ').ok);
+  ok('a wrong preposition fails', !M.checkRection(PAT, 'für', 'Akkusativ').ok);
+  ok('a wrong preposition is never a near miss',
+    M.checkRection(PAT, 'für', 'Akkusativ').near === false);
+  ok('the right preposition with the wrong case is a near miss',
+    M.checkRection(PAT, 'um', 'Dativ').near === true &&
+    !M.checkRection(PAT, 'um', 'Dativ').ok);
+  ok('a caseless pattern passes on the preposition alone',
+    M.checkRection(NOCASE, 'als', null).ok, 'gelten als');
+  ok('a caseless pattern needs no case step',
+    M.checkRection(NOCASE, 'als', null).needsCase === false);
+
+  const ch = M.prepChoices(PAT, 42);
+  ok('four options are offered', ch.length === 4, ch.join(','));
+  ok('the answer is among them', ch.includes('um'), ch.join(','));
+  ok('the options are distinct', new Set(ch).size === 4, ch.join(','));
+  ok('the options are stable for the same card',
+    M.prepChoices(PAT, 42).join(',') === ch.join(','));
+  ok('different cards get different layouts',
+    [0, 1, 2, 3, 4, 5].map(s => M.prepChoices(PAT, s).indexOf('um')).some(x => x !== ch.indexOf('um')));
+
+  ok('the example blanks the preposition',
+    M.blankExample(PAT) === 'Ich bewerbe mich ___ eine Stelle.', M.blankExample(PAT));
+  ok('a contracted preposition is blanked too',
+    M.blankExample({ prep: 'von', ex: 'Das hängt vom Wetter ab.' }) === 'Das hängt ___ Wetter ab.',
+    M.blankExample({ prep: 'von', ex: 'Das hängt vom Wetter ab.' }));
+  ok('an unlocatable preposition yields no blank',
+    M.blankExample({ prep: 'aus', ex: 'Daraus schließe ich, dass ...' }) === '');
+  ok('the blank never leaks the answer',
+    !M.blankExample(PAT).includes(' um '));
+  ok('the rection answer is formatted with its case',
+    M.rectionAnswer(PAT) === 'um + Akkusativ', M.rectionAnswer(PAT));
+  ok('a caseless rection answer omits the case',
+    M.rectionAnswer(NOCASE) === 'als', M.rectionAnswer(NOCASE));
+  ok('the grammar line now surfaces the governed preposition',
+    /bewerben um/.test(M.grammar(M.A.words.find(x => x.lemma === 'bewerben' && x.pos === 'verb'))),
+    M.grammar(M.A.words.find(x => x.lemma === 'bewerben' && x.pos === 'verb')));
+
+  // ------------------------------------------------------- verb drill (DOM)
+  console.log('\n== verb form drill (DOM) ==');
+  const setVerb = (prt, pp, aux) => {
+    const a = el('st-vprt'), b = el('st-vpp');
+    a.value = prt; a.dispatchEvent(new w.Event('input', { bubbles: true }));
+    b.value = pp; b.dispatchEvent(new w.Event('input', { bubbles: true }));
+    if (aux) click(`[data-aux="${aux}"]`);
+  };
+  const trueAux = M.auxFor(verbForms) === 'both' ? 'haben' : M.auxFor(verbForms);
+  const wrongAux = trueAux === 'haben' ? 'sein' : 'haben';
+
+  await openStudy(verbForms, 3);
+  ok('the form drill is selected', el('st-mode').textContent === 'Formen',
+    el('st-mode').textContent);
+  ok('the verb pad is shown', !el('st-verbpad').classList.contains('hidden'));
+  ok('the prompt is the infinitive', el('st-prompt').textContent.includes(verbForms.lemma));
+  ok('check is disabled with nothing entered', el('st-vcheck').disabled);
+  setVerb(verbForms.prt, verbForms.pp, null);
+  ok('check stays disabled without an auxiliary', el('st-vcheck').disabled);
+  click(`[data-aux="${trueAux}"]`);
+  ok('check enables once all three are given', !el('st-vcheck').disabled);
+  click('#st-vcheck'); await sleep(30);
+  ok('a fully correct answer shows the positive banner',
+    el('st-result').className.includes('good'), el('st-result').className);
+  got = M.A.state.get(verbForms.id);
+  ok('a correct form answer does not lapse', got.l === 0, got.l);
+  ok('a correct form answer counts a verb rep', got.m.verb === 1, JSON.stringify(got.m));
+
+  if (M.auxFor(verbForms) !== 'both') {
+    await openStudy(verbForms, 3);
+    setVerb(verbForms.prt, verbForms.pp, wrongAux);
+    click('#st-vcheck'); await sleep(30);
+    ok('the wrong auxiliary fails the card',
+      el('st-result').className.includes('bad'), el('st-result').className);
+    got = M.A.state.get(verbForms.id);
+    ok('a wrong auxiliary grades Again', got.l === 1, got.l);
+  } else {
+    ok('the wrong auxiliary fails the card', true, 'skipped: dual-auxiliary verb');
+    ok('a wrong auxiliary grades Again', true, 'skipped: dual-auxiliary verb');
+  }
+
+  await openStudy(verbForms, 3);
+  setVerb(verbForms.prt, verbForms.pp.slice(0, -1), trueAux);
+  click('#st-vcheck'); await sleep(30);
+  got = M.A.state.get(verbForms.id);
+  ok('one typo in a form grades Hard, not Again',
+    Math.abs(got.e - 2.35) < 1e-9 && got.l === 0, got.e + ' / lapses ' + got.l);
+  ok('the near-miss banner shows the correct forms',
+    el('st-rbody').textContent.includes(verbForms.pp), el('st-rbody').textContent);
+
+  // ------------------------------------------------------- rection drill (DOM)
+  console.log('\n== rection drill (DOM) ==');
+  const rpat = M.rectionFor(verbRect)[0];
+  const rNeedsCase = rpat.kase === 'Dativ' || rpat.kase === 'Akkusativ';
+
+  await openStudy(verbRect, 3);
+  ok('the rection drill is selected', el('st-mode').textContent === 'Präposition',
+    el('st-mode').textContent);
+  ok('the preposition pad is shown', !el('st-prepad').classList.contains('hidden'));
+  ok('four preposition buttons are rendered',
+    w.document.querySelectorAll('[data-prep]').length === 4);
+  ok('the case pad is hidden until the preposition is right',
+    el('st-casepad').classList.contains('hidden'));
+  ok('the prompt does not contain the bare answer',
+    !el('st-prompt').textContent.includes(' ' + rpat.prep + ' '),
+    el('st-prompt').textContent);
+
+  click(`[data-prep="${rpat.prep}"]`); await sleep(20);
+  if (rNeedsCase) {
+    ok('the right preposition opens the case step',
+      !el('st-casepad').classList.contains('hidden'));
+    click(`[data-case="${rpat.kase}"]`); await sleep(30);
+  } else {
+    ok('a caseless pattern finishes on the preposition', !el('st-result').classList.contains('hidden'));
+  }
+  ok('a fully right rection shows the positive banner',
+    el('st-result').className.includes('good'), el('st-result').className);
+  got = M.A.state.get(verbRect.id);
+  ok('a right rection does not lapse', got.l === 0, got.l);
+  ok('a right rection counts a rection rep', got.m.rection === 1, JSON.stringify(got.m));
+
+  await openStudy(verbRect, 3);
+  const badPrep = [...w.document.querySelectorAll('[data-prep]')]
+    .map(b => b.dataset.prep).find(p => p !== rpat.prep);
+  click(`[data-prep="${badPrep}"]`); await sleep(30);
+  ok('a wrong preposition grades immediately, with no case step',
+    el('st-result').className.includes('bad') &&
+    el('st-casepad').classList.contains('hidden'), el('st-result').className);
+  got = M.A.state.get(verbRect.id);
+  ok('a wrong preposition grades Again', got.l === 1, got.l);
+  ok('the banner shows the right preposition',
+    el('st-rbody').textContent.includes(rpat.prep), el('st-rbody').textContent);
+
+  if (rNeedsCase) {
+    await openStudy(verbRect, 3);
+    click(`[data-prep="${rpat.prep}"]`); await sleep(20);
+    const badCase = rpat.kase === 'Dativ' ? 'Akkusativ' : 'Dativ';
+    click(`[data-case="${badCase}"]`); await sleep(30);
+    got = M.A.state.get(verbRect.id);
+    ok('the right preposition with the wrong case grades Hard',
+      Math.abs(got.e - 2.35) < 1e-9 && got.l === 0, got.e + ' / lapses ' + got.l);
+  } else {
+    ok('the right preposition with the wrong case grades Hard', true, 'skipped: caseless pattern');
+  }
 
   // ------------------------------------------------------- session re-entry
   console.log('\n== session re-entry cap ==');

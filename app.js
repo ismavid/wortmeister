@@ -27,7 +27,26 @@ const CFG = {
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
 const MODE_LABEL = {
-  de2en: 'DE → EN', en2de: 'EN → DE', type: 'Schreiben', article: 'Artikel'
+  de2en: 'DE → EN', en2de: 'EN → DE', type: 'Schreiben', article: 'Artikel',
+  verb: 'Formen', rection: 'Präposition'
+};
+
+/* The `aux` column is inherited from the build pipeline and is wrong for a
+   number of verbs — a spot check of 29 unambiguous sein-verbs found 7 marked
+   haben. Drilling that as-is would teach the wrong answer before an exam, so
+   verified corrections live here. 'both' means either auxiliary is accepted,
+   which is the honest answer for motion verbs that also take a direct object
+   ("ich bin gefahren" / "ich habe das Auto gefahren").
+   The real fix is a data rebuild in tools/vocab-build; this covers the cases
+   most likely to come up. */
+const AUX_OVERRIDE = {
+  aufstehen: 'sein', passieren: 'sein', abfahren: 'sein', rennen: 'sein',
+  aufbrechen: 'sein', einziehen: 'sein', ausziehen: 'sein', umziehen: 'sein',
+  fahren: 'both', fliegen: 'both', schwimmen: 'both', reiten: 'both',
+  segeln: 'both', joggen: 'both', klettern: 'both', wandern: 'both',
+  fliehen: 'sein', stürzen: 'sein', explodieren: 'sein', platzen: 'sein',
+  verschwinden: 'sein', entstehen: 'sein', erscheinen: 'sein', auftreten: 'sein',
+  zerbrechen: 'both', schmelzen: 'both', trocknen: 'both'
 };
 /* The ambient light behind the glass takes the colour of the current word's
    level, so the card you are on is legible before you have read anything. */
@@ -108,6 +127,7 @@ const DB = {
 const A = {
   words: [],          // array of word objects, index === id === priority rank-1
   verbPrep: [],
+  prepBy: new Map(),  // bare lemma -> [{prep, kase, en, ex, reflexive}]
   state: new Map(),   // id -> review record (only touched words)
   set: null,          // settings
   dirty: new Set(),
@@ -172,10 +192,21 @@ function display(w) {
 function grammar(w) {
   const bits = [];
   if (w.pos === 'verb') {
-    const pp = [w.prt, (w.aux ? w.aux + ' ' : '') + w.pp].filter(x => x && x.trim());
-    if (pp.length) bits.push('<b>' + esc(w.lemma + ', ' + pp.join(', ')) + '</b>');
+    const a = auxFor(w);
+    const auxLabel = a === 'both' ? 'haben/sein' : a;
+    const parts = [w.prt, (auxLabel ? auxLabel + ' ' : '') + w.pp]
+      .filter(x => x && x.trim());
+    if (parts.length) bits.push('<b>' + esc(w.lemma + ', ' + parts.join(', ')) + '</b>');
     if (w.sep) bits.push('trennbar · 3. Pers. <b>' + esc(w.p3) + '</b>');
-    if (w.rection) bits.push('<b>' + esc(w.rection) + '</b>');
+    // the word-level `rection` column ships empty; the real patterns are in
+    // data.verbPrep, indexed by lemma at load
+    const pats = rectionFor(w);
+    if (pats) {
+      bits.push(pats.map(p =>
+        '<b>' + esc((p.reflexive ? 'sich ' : '') + w.lemma + ' ' + p.prep) + '</b>' +
+        (p.kase === 'Dativ' || p.kase === 'Akkusativ' ? ' + ' + esc(p.kase) : '')
+      ).join('<br>'));
+    }
   } else if (w.pos === 'noun' && w.plural) {
     bits.push('Plural: <b>' + esc(w.plural) + '</b>');
   }
@@ -183,6 +214,18 @@ function grammar(w) {
 }
 function isDrillableNoun(w) {
   return w.pos === 'noun' && ['der', 'die', 'das'].includes(w.article);
+}
+/** Verbs that carry both principal parts can be drilled on their forms. */
+function hasVerbForms(w) {
+  return w.pos === 'verb' && !!w.prt && !!w.pp;
+}
+/** The auxiliary to grade against — 'haben', 'sein', or 'both'. */
+function auxFor(w) {
+  return AUX_OVERRIDE[w.lemma] || w.aux;
+}
+/** Governed-preposition patterns for a verb, keyed on the bare lemma. */
+function rectionFor(w) {
+  return (w.pos === 'verb' && A.prepBy.get(w.lemma)) || null;
 }
 
 async function loadVocab() {
@@ -200,6 +243,24 @@ async function loadVocab() {
     return o;
   });
   A.verbPrep = cached.verbPrep || [];
+  indexRection();
+}
+
+/* verbPrep rows are [verb, preposition, case, gloss, example]. Two of them
+   carry "D" instead of a preposition — those verbs take a bare dative object
+   and have no preposition to drill, so they are dropped. Reflexive entries are
+   stored as "sich ärgern" while the word list holds the bare lemma. */
+function indexRection() {
+  A.prepBy = new Map();
+  for (const row of A.verbPrep) {
+    const [verb, prep, kase, en, ex] = row;
+    if (!verb || !prep || prep === 'D') continue;
+    const reflexive = /^sich\s+/.test(verb);
+    const lemma = verb.replace(/^sich\s+/, '');
+    const list = A.prepBy.get(lemma) || [];
+    list.push({ prep, kase, en, ex, reflexive, verb });
+    A.prepBy.set(lemma, list);
+  }
 }
 
 /* ============================ scheduler ============================ */
@@ -379,6 +440,88 @@ function checkTyped(w, raw) {
   return { ok: false, near: false, expected };
 }
 
+/** One typed form against its target: 'exact', 'near' (one typo), or 'wrong'. */
+function matchForm(input, want) {
+  const got = foldGerman(input), target = foldGerman(want);
+  if (!got) return 'wrong';
+  if (got === target) return 'exact';
+  if (target.length > CFG.TYPO_MIN_LEN && levenshtein(got, target, 1) <= 1) return 'near';
+  return 'wrong';
+}
+
+const VOWELS = 'aeiou';
+/** True when two strings differ by exactly one substituted vowel. */
+function vowelSwap(a, b) {
+  if (a.length !== b.length) return false;
+  let at = -1;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue;
+    if (at >= 0) return false;
+    at = i;
+  }
+  return at >= 0 && VOWELS.includes(a[at]) && VOWELS.includes(b[at]);
+}
+
+/**
+ * Like matchForm, but a single swapped vowel counts as wrong rather than a
+ * typo. In a verb form that vowel is the ablaut — the whole point of the
+ * drill — so "fang an" is a different form of anfangen, not a misspelling of
+ * "fing an". Edits elsewhere (a dropped letter, a doubled consonant) stay
+ * forgiven, same as typing mode.
+ */
+function matchVerbForm(input, want) {
+  const m = matchForm(input, want);
+  if (m !== 'near') return m;
+  return vowelSwap(foldGerman(input), foldGerman(want)) ? 'wrong' : 'near';
+}
+
+/**
+ * Grade a verb-form answer: Präteritum, Partizip II and the auxiliary.
+ * The auxiliary is a two-way choice, so it is exact-or-wrong — but a verb
+ * marked 'both' accepts either, because for those verbs both are correct.
+ */
+function checkVerbForms(w, prt, pp, aux) {
+  const want = { prt: w.prt, pp: w.pp, aux: auxFor(w) };
+  const mPrt = matchVerbForm(prt, w.prt);
+  const mPp = matchVerbForm(pp, w.pp);
+  const auxOk = want.aux === 'both'
+    ? (aux === 'haben' || aux === 'sein')
+    : aux === want.aux;
+  const ok = mPrt !== 'wrong' && mPp !== 'wrong' && auxOk;
+  return { ok, near: ok && (mPrt === 'near' || mPp === 'near'), auxOk, want };
+}
+
+/**
+ * Grade a rection answer. The preposition is the main point, so getting it
+ * right but the case wrong is a near miss rather than a failure.
+ * Patterns whose case is '—' (like "gelten als") skip the case step entirely.
+ */
+function checkRection(pat, prep, kase) {
+  const prepOk = prep === pat.prep;
+  const needsCase = pat.kase === 'Dativ' || pat.kase === 'Akkusativ';
+  const caseOk = !needsCase || kase === pat.kase;
+  return { ok: prepOk && caseOk, near: prepOk && !caseOk, prepOk, needsCase };
+}
+
+/** Four preposition options: the answer plus three plausible distractors. */
+function prepChoices(pat, seed) {
+  const pool = ['an', 'auf', 'aus', 'bei', 'für', 'gegen', 'in', 'mit',
+    'nach', 'um', 'unter', 'von', 'vor', 'zu', 'über', 'als']
+    .filter(p => p !== pat.prep);
+  const picked = [];
+  // deterministic per card, so re-showing the same card is not a fresh lottery
+  let k = Math.abs(seed) % pool.length;
+  while (picked.length < 3) {
+    const p = pool[k % pool.length];
+    if (!picked.includes(p)) picked.push(p);
+    k += 7;
+  }
+  const out = picked.concat([pat.prep]);
+  // rotate the answer into a stable but non-obvious slot
+  const shift = Math.abs(seed) % 4;
+  return out.slice(out.length - shift).concat(out.slice(0, out.length - shift));
+}
+
 /* ============================ queues ============================ */
 function untriaged() {
   const out = [];
@@ -454,13 +597,26 @@ function buildSession() {
  *   reps 0–1  flip DE→EN
  *   reps 2–4  flip EN→DE
  *   reps 5+   type the German
- * Nouns interleave the article drill from rep 2, taking every third slot, so
- * gender gets its own repetitions without displacing the progression.
+ *
+ * Specialist drills take every third slot rather than replacing the
+ * progression: nouns from rep 2 (gender), verbs from rep 3 (forms, and the
+ * governed preposition where one exists). A verb with both alternates between
+ * them so neither is starved.
  */
 function pickMode(w) {
   const st = getState(w.id);
   const reps = st ? st.r : 0;
+
   if (isDrillableNoun(w) && reps >= 2 && reps % 3 === 2) return 'article';
+
+  if (w.pos === 'verb' && reps >= 3 && reps % 3 === 0) {
+    const forms = hasVerbForms(w);
+    const rection = !!rectionFor(w);
+    if (forms && rection) return (reps / 3) % 2 === 0 ? 'verb' : 'rection';
+    if (forms) return 'verb';
+    if (rection) return 'rection';
+  }
+
   if (reps < 2) return 'de2en';
   if (reps < 5) return 'en2de';
   return 'type';
@@ -688,9 +844,12 @@ $$('[data-tg]').forEach(b => b.addEventListener('click', () => triage(b.dataset.
 /* ============================ study ============================ */
 const ST = {
   queue: [], i: 0, mode: 'de2en', t0: 0, revealed: false, done: 0,
-  elapsed: 0, again: new Map()
+  elapsed: 0, again: new Map(),
+  aux: null,        // auxiliary picked in the verb-form drill
+  pat: null,        // rection pattern being asked
+  prep: null        // preposition picked, before the case step
 };
-const AUTO_MODES = { type: true, article: true };
+const AUTO_MODES = { type: true, article: true, verb: true, rection: true };
 
 function startStudy() {
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
@@ -704,7 +863,8 @@ function startStudy() {
   showCard();
 }
 function hidePads() {
-  ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-result']
+  ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-verbpad',
+    '#st-prepad', '#st-casepad', '#st-result']
     .forEach(s => $(s).classList.add('hidden'));
 }
 function showCard() {
@@ -751,6 +911,27 @@ function showCard() {
     $('#st-answer').innerHTML = esc(display(w));
     $('#st-hint').textContent = 'Welcher Artikel?';
     $('#st-artpad').classList.remove('hidden');
+  } else if (ST.mode === 'verb') {
+    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
+    $('#st-answer').innerHTML = esc(verbFormsLine(w));
+    $('#st-hint').textContent = 'Präteritum, Partizip II, Hilfsverb';
+    $('#st-vprt').value = ''; $('#st-vprt').disabled = false;
+    $('#st-vpp').value = ''; $('#st-vpp').disabled = false;
+    ST.aux = null;
+    $$('[data-aux]').forEach(b => b.classList.remove('sel'));
+    $('#st-vcheck').disabled = true;
+    $('#st-verbpad').classList.remove('hidden');
+  } else if (ST.mode === 'rection') {
+    const pats = rectionFor(w);
+    ST.pat = pats[(getState(w.id) ? getState(w.id).r : 0) % pats.length];
+    ST.prep = null;
+    $('#st-prompt').innerHTML = rectionPrompt(w, ST.pat);
+    $('#st-answer').innerHTML = esc(rectionAnswer(ST.pat));
+    $('#st-hint').textContent = 'Welche Präposition?';
+    if (ST.pat.ex) $('#st-gram').innerHTML = '<b>' + esc(ST.pat.ex) + '</b>';
+    $('#st-preps').innerHTML = prepChoices(ST.pat, w.id)
+      .map(p => `<button class="gbtn pbtn" data-prep="${esc(p)}">${esc(p)}</button>`).join('');
+    $('#st-prepad').classList.remove('hidden');
   } else {
     $('#st-prompt').innerHTML = ST.mode === 'de2en'
       ? esc(display(w))
@@ -891,6 +1072,124 @@ function submitArticle(picked) {
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
 }
+
+/* ---- verb forms ---- */
+function verbFormsLine(w) {
+  const a = auxFor(w);
+  return [w.prt, w.pp, a === 'both' ? 'haben/sein' : a].join(' · ');
+}
+function submitVerb() {
+  const w = ST.queue[ST.i];
+  if (!w || ST.revealed || ST.mode !== 'verb') return;
+  const prt = $('#st-vprt').value, pp = $('#st-vpp').value;
+  if (!prt.trim() || !pp.trim() || !ST.aux) return;
+  ST.revealed = true;
+  ST.elapsed = performance.now() - ST.t0;
+  $('#st-vprt').disabled = true;
+  $('#st-vpp').disabled = true;
+  $('#st-verbpad').classList.add('hidden');
+
+  const res = checkVerbForms(w, prt, pp, ST.aux);
+  let grade;
+  if (!res.ok) {
+    grade = G.AGAIN;
+    showResult(false, 'Nicht ganz', 'Richtig: <i>' + esc(verbFormsLine(w)) + '</i>');
+  } else if (res.near) {
+    grade = G.HARD;
+    showResult(true, 'Fast richtig', 'Schreibweise: <i>' + esc(verbFormsLine(w)) + '</i>');
+  } else {
+    grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
+    showResult(true, 'Richtig', '');
+  }
+  commitAnswer(w, grade, ST.elapsed);
+  $('#st-result').classList.remove('hidden');
+}
+function syncVerbPad() {
+  $('#st-vcheck').disabled =
+    !($('#st-vprt').value.trim() && $('#st-vpp').value.trim() && ST.aux);
+}
+['#st-vprt', '#st-vpp'].forEach(sel => {
+  $(sel).addEventListener('input', syncVerbPad);
+  $(sel).addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (sel === '#st-vprt') $('#st-vpp').focus(); else submitVerb();
+  });
+});
+$$('[data-aux]').forEach(b => b.addEventListener('click', () => {
+  if (ST.revealed) return;
+  ST.aux = b.dataset.aux;
+  $$('[data-aux]').forEach(x => x.classList.toggle('sel', x === b));
+  syncVerbPad();
+}));
+$('#st-vcheck').addEventListener('click', submitVerb);
+
+/* ---- rection: preposition, then case ---- */
+const CONTRACTIONS = {
+  von: ['vom'], an: ['am', 'ans'], in: ['im', 'ins'], zu: ['zum', 'zur'],
+  bei: ['beim'], auf: ['aufs'], 'für': ['fürs']
+};
+/** The example sentence with the preposition replaced by a blank. */
+function blankExample(pat) {
+  if (!pat.ex) return '';
+  const alts = [pat.prep].concat(CONTRACTIONS[pat.prep] || [])
+    .sort((a, b) => b.length - a.length)
+    .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp('(^|\\s)(' + alts.join('|') + ')(?=\\s|[.,!?])', 'i');
+  const safe = esc(pat.ex);
+  return re.test(safe) ? safe.replace(re, '$1___') : '';
+}
+function rectionPrompt(w, pat) {
+  const head = (pat.reflexive ? 'sich ' : '') + w.lemma;
+  const blank = blankExample(pat);
+  return esc(head) + '<small class="gloss">' + esc(pat.en) + '</small>' +
+    (blank ? '<small class="gloss">' + blank + '</small>' : '');
+}
+function rectionAnswer(pat) {
+  const needsCase = pat.kase === 'Dativ' || pat.kase === 'Akkusativ';
+  return pat.prep + (needsCase ? ' + ' + pat.kase : '');
+}
+function finishRection(kase) {
+  const w = ST.queue[ST.i];
+  ST.revealed = true;
+  ST.elapsed = performance.now() - ST.t0;
+  $('#st-prepad').classList.add('hidden');
+  $('#st-casepad').classList.add('hidden');
+
+  const res = checkRection(ST.pat, ST.prep, kase);
+  let grade;
+  if (!res.prepOk) {
+    grade = G.AGAIN;
+    showResult(false, 'Nicht ganz', 'Richtig: <i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+  } else if (res.near) {
+    grade = G.HARD;
+    showResult(true, 'Fast richtig', 'Fall: <i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+  } else {
+    grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
+    showResult(true, 'Richtig', '<i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+  }
+  commitAnswer(w, grade, ST.elapsed);
+  $('#st-result').classList.remove('hidden');
+}
+$('#st-preps').addEventListener('click', e => {
+  const b = e.target.closest('[data-prep]');
+  if (!b || ST.revealed || ST.mode !== 'rection' || ST.prep) return;
+  ST.prep = b.dataset.prep;
+  const needsCase = ST.pat.kase === 'Dativ' || ST.pat.kase === 'Akkusativ';
+  // only ask for the case once the preposition is right — a wrong preposition
+  // makes the case question meaningless
+  if (ST.prep === ST.pat.prep && needsCase) {
+    $('#st-prepad').classList.add('hidden');
+    $('#st-hint').textContent = 'Welcher Fall?';
+    $('#st-casepad').classList.remove('hidden');
+    return;
+  }
+  finishRection(null);
+});
+$$('[data-case]').forEach(b => b.addEventListener('click', () => {
+  if (ST.revealed || ST.mode !== 'rection') return;
+  finishRection(b.dataset.case);
+}));
 
 $('#st-input').addEventListener('input', e => {
   $('#st-check').disabled = !e.target.value.trim();
@@ -1127,5 +1426,8 @@ window.__wm = {
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
-  isDrillableNoun, recentPace, paceSeries
+  isDrillableNoun, recentPace, paceSeries,
+  hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,
+  checkVerbForms, checkRection,
+  prepChoices, verbFormsLine, blankExample, rectionAnswer, grammar
 };
