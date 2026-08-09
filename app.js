@@ -36,8 +36,12 @@ const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
    thing telling you what this card is going to ask for. */
 const MODE_LABEL = {
   de2en: 'German → English', en2de: 'English → German', type: 'Type it',
-  article: 'Article', verb: 'Verb forms', rection: 'Preposition'
+  article: 'Article', verb: 'Verb forms', rection: 'Preposition',
+  match: 'Match'
 };
+/* Gender gets a constant shape because colour is already spoken for by the
+   CEFR ambient. One silent, repeated cue across ~5,700 nouns. */
+const GENDER_SHAPE = { der: '▲', die: '●', das: '■' };
 
 /* The `aux` column is inherited from the build pipeline and is wrong for a
    number of verbs — a spot check of 29 unambiguous sein-verbs found 7 marked
@@ -136,6 +140,7 @@ const A = {
   words: [],          // array of word objects, index === id === priority rank-1
   verbPrep: [],
   prepBy: new Map(),  // bare lemma -> [{prep, kase, en, ex, reflexive}]
+  family: new Map(),  // 5-letter stem -> [word id]
   state: new Map(),   // id -> review record (only touched words)
   set: null,          // settings
   dirty: new Set(),
@@ -197,6 +202,11 @@ function display(w) {
   const head = (w.article ? w.article + ' ' : '') + w.lemma;
   return w.plural ? head + ', ' + w.plural : head;
 }
+/** display() with the gender shape in front, for places that render HTML. */
+function displayMarked(w) {
+  const m = genderMark(w);
+  return (m ? '<span class="gmark">' + m + '</span>' : '') + esc(display(w));
+}
 function grammar(w) {
   const bits = [];
   if (w.pos === 'verb') {
@@ -218,6 +228,11 @@ function grammar(w) {
   } else if (w.pos === 'noun' && w.plural) {
     bits.push('plural: <b>' + esc(w.plural) + '</b>');
   }
+  // a word is easier to hold onto as part of a family than on its own
+  const kin = relatives(w, 2);
+  if (kin.length) {
+    bits.push('related: ' + kin.map(k => '<b>' + esc(k.lemma) + '</b>').join(', '));
+  }
   return bits.join('<br>');
 }
 function isDrillableNoun(w) {
@@ -234,6 +249,34 @@ function auxFor(w) {
 /** Governed-preposition patterns for a verb, keyed on the bare lemma. */
 function rectionFor(w) {
   return (w.pos === 'verb' && A.prepBy.get(w.lemma)) || null;
+}
+/** The gender shape for a noun, or '' for everything else. */
+function genderMark(w) {
+  return isDrillableNoun(w) ? GENDER_SHAPE[w.article] : '';
+}
+
+/** Index words by morphological family so a card can show its relatives. */
+function indexFamilies() {
+  A.family = new Map();
+  for (const w of A.words) {
+    const k = familyKey(w);
+    if (k.length < 5) continue;
+    let l = A.family.get(k);
+    if (!l) A.family.set(k, l = []);
+    l.push(w.id);
+  }
+}
+/** Up to `max` relatives, highest priority first (the array is rank-ordered). */
+function relatives(w, max) {
+  const l = A.family.get(familyKey(w));
+  if (!l || l.length < 2) return [];
+  const out = [];
+  for (const id of l) {
+    if (id === w.id) continue;
+    out.push(A.words[id]);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 async function loadVocab() {
@@ -252,6 +295,7 @@ async function loadVocab() {
   });
   A.verbPrep = cached.verbPrep || [];
   indexRection();
+  indexFamilies();
 }
 
 /* verbPrep rows are [verb, preposition, case, gloss, example]. Two of them
@@ -1100,11 +1144,27 @@ const ST = {
   pat: null,        // rection pattern being asked
   prep: null        // preposition picked, before the case step
 };
-const AUTO_MODES = { type: true, article: true, verb: true, rection: true };
+/* Modes that grade themselves and have no reveal step. `match` must be here or
+   a tap on the card face during a pairing round reveals the underlying card
+   and lets the grade buttons hijack the round. */
+const AUTO_MODES = { type: true, article: true, verb: true, rection: true, match: true };
+/** Pairing-round state. Separate from ST because a round spans five cards. */
+const MT = { words: null, miss: null, pairedIds: null, sel: null, t0: 0 };
 
 function startStudy() {
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
   ST.wrong = 0; ST.t0session = Date.now();
+  MT.words = null;
+  // open with a pairing round when there are enough lightly-seen words, and
+  // float them to the front so the round consumes a contiguous block
+  const round = ST.queue.length >= 8 ? pickMatchRound(ST.queue) : null;
+  if (round) {
+    const ids = new Set(round.map(w => w.id));
+    ST.queue = round.concat(ST.queue.filter(w => !ids.has(w.id)));
+    ST.matchRound = round;
+  } else {
+    ST.matchRound = null;
+  }
   if (!ST.queue.length) {
     $('#st-prompt').innerHTML =
       '<span style="font-size:20px;color:var(--green)">Nothing due today</span>';
@@ -1120,9 +1180,111 @@ function startStudy() {
 }
 function hidePads() {
   ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-verbpad',
-    '#st-prepad', '#st-casepad', '#st-result', '#st-donepad']
+    '#st-prepad', '#st-casepad', '#st-matchpad', '#st-result', '#st-donepad']
     .forEach(s => $(s).classList.add('hidden'));
 }
+
+/* ---- pairing round ----
+   Five words against five meanings, as an opening round. It is the easiest
+   mode by design: it opens the session with fast wins so starting is cheap,
+   and it forces discrimination between words you half-know rather than
+   recall in isolation. Only words with few reps qualify. */
+function pickMatchRound(queue) {
+  const eligible = [];
+  const seen = new Set();
+  for (const w of queue) {
+    if (seen.has(w.id)) continue;
+    const st = getState(w.id);
+    if ((st ? st.r : 0) > 2) continue;
+    if (eligible.some(x => familyKey(x) === familyKey(w))) continue;  // no siblings
+    seen.add(w.id);
+    eligible.push(w);
+    if (eligible.length === 5) break;
+  }
+  return eligible.length === 5 ? eligible : null;
+}
+
+function startMatch(words) {
+  MT.words = words;
+  MT.miss = new Map(words.map(w => [w.id, 0]));
+  MT.pairedIds = new Set();
+  MT.sel = null;
+  MT.t0 = performance.now();
+
+  const rnd = seededRandom(daySeed() ^ words[0].id);
+  const left = shuffleSeeded(words, rnd);
+  const right = shuffleSeeded(words, seededRandom(daySeed() ^ (words[0].id + 977)));
+  const cell = (w, side, label) =>
+    `<button class="mtile" data-side="${side}" data-wid="${w.id}">${esc(label)}</button>`;
+
+  $('#st-prompt').innerHTML = 'Match the pairs<small class="gloss">tap a word, then its meaning</small>';
+  $('#st-answer').classList.add('hidden');
+  $('#st-gram').classList.add('hidden');
+  $('#st-hint').textContent = '';
+  $('#st-mode').textContent = MODE_LABEL.match;
+  $('#st-face').classList.add('top');
+
+  const rows = [];
+  for (let i = 0; i < 5; i++) {
+    rows.push(cell(left[i], 'de', display(left[i])));
+    rows.push(cell(right[i], 'en', right[i].en));
+  }
+  $('#st-matchgrid').innerHTML = rows.join('');
+  hidePads();
+  $('#st-matchpad').classList.remove('hidden');
+}
+
+function matchTap(btn) {
+  if (btn.classList.contains('gone')) return;
+  const side = btn.dataset.side, wid = +btn.dataset.wid;
+  if (!MT.sel) {
+    MT.sel = btn;
+    btn.classList.add('sel');
+    return;
+  }
+  if (MT.sel === btn) { btn.classList.remove('sel'); MT.sel = null; return; }
+  if (MT.sel.dataset.side === side) {           // same column — move the selection
+    MT.sel.classList.remove('sel');
+    MT.sel = btn; btn.classList.add('sel');
+    return;
+  }
+  const first = MT.sel;
+  MT.sel = null;
+  first.classList.remove('sel');
+
+  if (+first.dataset.wid === wid) {
+    first.classList.add('gone');
+    btn.classList.add('gone');
+    MT.pairedIds.add(wid);
+    if (MT.pairedIds.size === MT.words.length) setTimeout(finishMatch, 260);
+  } else {
+    MT.miss.set(+first.dataset.wid, (MT.miss.get(+first.dataset.wid) || 0) + 1);
+    MT.miss.set(wid, (MT.miss.get(wid) || 0) + 1);
+    [first, btn].forEach(b => {
+      b.classList.add('bad');
+      setTimeout(() => b.classList.remove('bad'), 320);
+    });
+  }
+}
+
+function finishMatch() {
+  const per = (performance.now() - MT.t0) / MT.words.length;
+  for (const w of MT.words) {
+    const miss = MT.miss.get(w.id) || 0;
+    const grade = miss === 0 ? adjustGrade(G.GOOD, per, 'match')
+      : miss === 1 ? G.HARD : G.AGAIN;
+    gradeWord(w, grade, per, 'match');
+  }
+  // the round consumed the first five cards of the queue
+  ST.i += MT.words.length;
+  MT.words = null;
+  showCard();
+}
+
+$('#st-matchgrid').addEventListener('click', e => {
+  const b = e.target.closest('.mtile');
+  if (b && MT.words) matchTap(b);
+});
 function showCard() {
   if (ST.i >= ST.queue.length) {
     const mins = Math.max(1, Math.round((Date.now() - ST.t0session) / CFG.MIN));
@@ -1145,6 +1307,18 @@ function showCard() {
     renderHome();
     return;
   }
+  // the opening pairing round covers the first five cards
+  if (ST.matchRound && ST.i === 0) {
+    const round = ST.matchRound;
+    ST.matchRound = null;
+    ST.mode = 'match';
+    $('#st-count').textContent = `1 / ${ST.queue.length}`;
+    $('#st-meter').style.width = '0%';
+    setTint(round[0].level.replace('*', ''));
+    startMatch(round);
+    return;
+  }
+
   const w = ST.queue[ST.i];
   ST.mode = pickMode(w);
   ST.revealed = false;
@@ -1160,7 +1334,7 @@ function showCard() {
 
   if (ST.mode === 'type') {
     $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
-    $('#st-answer').innerHTML = esc(display(w));
+    $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = isDrillableNoun(w)
       ? 'Include the article' : 'Type the German word';
     const inp = $('#st-input');
@@ -1170,7 +1344,7 @@ function showCard() {
     inp.focus();
   } else if (ST.mode === 'article') {
     $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
-    $('#st-answer').innerHTML = esc(display(w));
+    $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = 'Which article?';
     $('#st-artpad').classList.remove('hidden');
   } else if (ST.mode === 'verb') {
@@ -1198,7 +1372,7 @@ function showCard() {
     $('#st-prompt').innerHTML = ST.mode === 'de2en'
       ? esc(display(w))
       : esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
-    $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(w.en) : esc(display(w));
+    $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(w.en) : displayMarked(w);
     $('#st-hint').textContent = 'Tap to reveal';
     $('#st-pad').classList.remove('hidden');
   }
@@ -1243,25 +1417,31 @@ function requeueIfSoon(w, st) {
   ST.queue.push(w);
 }
 
-function commitAnswer(w, grade, elapsed) {
+/** Grade one word without advancing the card cursor — the pairing round
+    settles five words at once, so scoring and advancing are separate. */
+function gradeWord(w, grade, elapsed, mode) {
   let st = getState(w.id);
   const wasNew = !st || st.s === 'queued' || st.s === 'new';
   if (!st) st = newState();
-  pushTime(ST.mode, elapsed);
+  pushTime(mode, elapsed);
   st.t = Math.round(elapsed);
-  st.m[ST.mode] = (st.m[ST.mode] || 0) + 1;
+  st.m[mode] = (st.m[mode] || 0) + 1;
   if (grade === G.AGAIN) ST.wrong++;
   applyGrade(st, grade, Date.now());
   setState(w.id, st);
   requeueIfSoon(w, st);
   logAnswer(wasNew, grade);
   ST.done++;
+}
+
+function commitAnswer(w, grade, elapsed) {
+  gradeWord(w, grade, elapsed, ST.mode);
   ST.i++;
 }
 
 $$('[data-grade]').forEach(b => b.addEventListener('click', () => {
   const w = ST.queue[ST.i];
-  if (!w || !ST.revealed) return;
+  if (!w || !ST.revealed || MT.words) return;
   const raw = b.dataset.grade;
   if (raw === 'know') {
     let st = getState(w.id);
@@ -1751,6 +1931,7 @@ window.__wm = {
   overview, nextAction, renderCounters, MODE_LABEL,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   advanceStreak, daysBetween, heatSeries, renderHeat,
+  genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,

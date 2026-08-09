@@ -104,6 +104,7 @@ function A_extendedSample(w){
   ok('every view gets the same nav',
     [...w.document.querySelectorAll('.nav')].every(n => n.querySelectorAll('button').length === 4));
 
+  const M = w.__wm;
   const triageCount = w.document.getElementById('s-triage').textContent;
   ok('triage backlog shown', triageCount && triageCount !== '0', triageCount);
 
@@ -156,6 +157,64 @@ function A_extendedSample(w){
   click('[data-go="study"]');
   await sleep(60);
   ok('study view visible', w.document.getElementById('v-study').classList.contains('on'));
+
+  // -------------------------------------------------- opening pairing round
+  console.log('\n== pairing round ==');
+  ok('a session opens with a pairing round',
+    !w.document.getElementById('st-matchpad').classList.contains('hidden'),
+    w.document.getElementById('st-mode').textContent);
+  ok('the round shows five pairs',
+    w.document.querySelectorAll('#st-matchgrid .mtile').length === 10);
+  ok('the mode reads Match', w.document.getElementById('st-mode').textContent === 'Match');
+  ok('the reveal button cannot hijack the round', (() => {
+    click('#st-reveal');
+    return w.document.getElementById('st-grades').classList.contains('hidden');
+  })(), 'grades must stay hidden during a pairing round');
+  ok('tapping the card face cannot hijack it either', (() => {
+    click('#st-face');
+    return w.document.getElementById('st-answer').classList.contains('hidden');
+  })());
+
+  const tiles = () => [...w.document.querySelectorAll('#st-matchgrid .mtile')];
+  const roundIds = [...new Set(tiles().map(t => +t.dataset.wid))];
+  ok('the round covers five distinct words', roundIds.length === 5, roundIds.join(','));
+  ok('every word in the round is lightly seen',
+    roundIds.every(id => {
+      const st = M.A.state.get(id);
+      return !st || st.r <= 2;
+    }));
+
+  // a deliberate mismatch first, then solve the round
+  const deTile = id => tiles().find(t => t.dataset.side === 'de' && +t.dataset.wid === id);
+  const enTile = id => tiles().find(t => t.dataset.side === 'en' && +t.dataset.wid === id);
+  deTile(roundIds[0]).dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  enTile(roundIds[1]).dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(20);
+  ok('a wrong pair does not clear the tiles',
+    !deTile(roundIds[0]).classList.contains('gone'));
+  ok('a wrong pair is marked', deTile(roundIds[0]).classList.contains('bad'));
+
+  for (const id of roundIds) {
+    deTile(id).dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    enTile(id).dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(20);
+  }
+  ok('matching a pair clears both tiles',
+    tiles().filter(t => t.classList.contains('gone')).length === 10);
+  await sleep(400);
+  ok('the round grades every word it covered',
+    roundIds.every(id => (M.A.state.get(id) || {}).m &&
+      M.A.state.get(id).m.match === 1),
+    roundIds.map(id => JSON.stringify((M.A.state.get(id) || {}).m)).join(' '));
+  ok('a word missed once is graded Hard, not Good',
+    M.A.state.get(roundIds[0]).e < 2.5 || M.A.state.get(roundIds[0]).s === 'learning',
+    'ease ' + M.A.state.get(roundIds[0]).e);
+  ok('the session moves on after the round',
+    w.document.getElementById('st-matchpad').classList.contains('hidden'));
+  ok('the card counter accounts for the five cards',
+    M.ST.i >= 5, 'i=' + M.ST.i);
+
+  console.log('\n== study session ==');
   const prompt1 = w.document.getElementById('st-prompt').textContent;
   ok('card prompt rendered', prompt1.length > 0, prompt1);
   ok('grades hidden before reveal',
@@ -183,7 +242,6 @@ function A_extendedSample(w){
 
   // ---------------------------------------------------------- scheduler
   console.log('\n== scheduler ==');
-  const M = w.__wm;
   ok('scheduler exported', !!M && typeof M.applyGrade === 'function');
 
   // new card graduating through the learning steps

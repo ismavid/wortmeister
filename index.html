@@ -181,6 +181,26 @@ button{font-family:inherit}
 .gbtn.know{color:var(--green)}
 .gbtn.sel{background:rgba(10,132,255,.22);color:var(--blue-lt)}
 .abtn{min-height:78px;font-size:25px;font-weight:600;letter-spacing:-.03em}
+/* colour already means CEFR level, so gender gets shape instead */
+.abtn i{font-style:normal;font-size:14px;opacity:.55;display:block;margin-bottom:3px;
+  line-height:1}
+.gmark{font-style:normal;opacity:.5;font-size:.6em;vertical-align:.25em;margin-right:.25em}
+
+/* ---------- pairing round ---------- */
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mtile{min-height:56px;border:0;border-radius:14px;background:var(--glass);
+  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  color:var(--ink);font:500 15px/1.2 var(--font);letter-spacing:-.02em;
+  padding:8px 10px;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;text-align:center;
+  transition:background .18s ease,opacity .28s ease,transform .18s ease}
+.mtile.sel{background:rgba(10,132,255,.28);color:var(--blue-lt)}
+.mtile.gone{opacity:0;pointer-events:none;transform:scale(.9)}
+.mtile.bad{background:rgba(255,69,58,.3);animation:shake .3s}
+@keyframes shake{
+  0%,100%{transform:translateX(0)} 20%{transform:translateX(-5px)}
+  40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)}
+}
 .auxbtn{min-height:56px;font-size:18px;font-weight:600}
 /* the preposition drill needs four options that still fit at 375px */
 .pbtn{min-height:56px;font-size:19px;font-weight:600}
@@ -376,13 +396,18 @@ select{appearance:none;-webkit-appearance:none}
         <button class="btn" id="st-check" disabled>Check</button>
       </div>
 
-      <!-- article drill: der / die / das -->
+      <!-- article drill: der / die / das, each with its constant shape -->
       <div class="pad hidden" id="st-artpad">
         <div class="g3">
-          <button class="gbtn abtn" data-art="der">der</button>
-          <button class="gbtn abtn" data-art="die">die</button>
-          <button class="gbtn abtn" data-art="das">das</button>
+          <button class="gbtn abtn" data-art="der"><i>▲</i>der</button>
+          <button class="gbtn abtn" data-art="die"><i>●</i>die</button>
+          <button class="gbtn abtn" data-art="das"><i>■</i>das</button>
         </div>
+      </div>
+
+      <!-- pairing round: five words, five meanings -->
+      <div class="pad hidden" id="st-matchpad">
+        <div class="mgrid" id="st-matchgrid"></div>
       </div>
 
       <!-- verb forms: Präteritum, Partizip II, auxiliary -->
