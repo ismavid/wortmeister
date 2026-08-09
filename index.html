@@ -51,13 +51,38 @@ body{
 input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 #app{flex:1;display:flex;flex-direction:column;min-height:0;position:relative;isolation:isolate}
 
-/* the one flourish: ambient light, tinted to the level of the current word */
+/* The one flourish: ambient light tinted to the level of the current word.
+   Only transform is animated — the blur stays put so the layer is rasterised
+   once and the drift runs on the compositor. */
 #ambient{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-#ambient i{position:absolute;display:block;border-radius:50%;filter:blur(80px)}
+#ambient i{position:absolute;display:block;border-radius:50%;filter:blur(80px);
+  will-change:transform;transition:background .8s ease,opacity .8s ease}
 #ambient i:nth-child(1){width:92%;height:34%;left:-16%;top:-6%;
-  background:var(--tint);opacity:.26;transition:background .7s ease}
+  background:var(--tint);opacity:.26}
 #ambient i:nth-child(2){width:80%;height:30%;right:-20%;bottom:4%;
   background:var(--blue);opacity:.13}
+#ambient i:nth-child(3){width:70%;height:28%;left:-8%;top:42%;
+  background:var(--tint);opacity:0}
+
+/* studying only: the field slowly breathes, the way a full-screen player does.
+   Three different periods and directions so it never visibly loops. */
+#ambient.live i:nth-child(1){animation:drift1 34s ease-in-out infinite}
+#ambient.live i:nth-child(2){animation:drift2 46s ease-in-out infinite}
+#ambient.live i:nth-child(3){opacity:.14;animation:drift3 39s ease-in-out infinite}
+@keyframes drift1{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  33%{transform:translate3d(14%,7%,0) scale(1.18)}
+  66%{transform:translate3d(-9%,12%,0) scale(.94)}
+}
+@keyframes drift2{
+  0%,100%{transform:translate3d(0,0,0) scale(1.05)}
+  40%{transform:translate3d(-16%,-10%,0) scale(.9)}
+  75%{transform:translate3d(8%,-5%,0) scale(1.22)}
+}
+@keyframes drift3{
+  0%,100%{transform:translate3d(0,0,0) scale(.95)}
+  50%{transform:translate3d(12%,-14%,0) scale(1.25)}
+}
 
 .view{flex:1;display:none;flex-direction:column;min-height:0;position:relative;z-index:1}
 .view.on{display:flex}
@@ -114,8 +139,15 @@ button{font-family:inherit}
 .note ol{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:15px}
 .note ol li{margin-bottom:5px}
 
-/* ---------- progress ring ---------- */
-.ring{display:block;margin:14px auto 6px}
+/* ---------- progress ring ----------
+   Centred by layout, not by a magic negative margin that drifts whenever the
+   type size changes. */
+.ringwrap{position:relative;width:min(62vw,208px);aspect-ratio:1;
+  margin:18px auto 0;display:grid;place-items:center}
+.ring{position:absolute;inset:0;width:100%;height:100%}
+.ringwrap b{position:relative;font-size:clamp(40px,12vw,52px);font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:-.05em;line-height:1}
+.ringsub{text-align:center;color:var(--faint);font-size:13px;margin:12px 0 30px}
 .ring .track{fill:none;stroke:rgba(255,255,255,.09);stroke-width:5}
 .ring .fill{fill:none;stroke:var(--blue);stroke-width:5;stroke-linecap:round;
   transform:rotate(-90deg);transform-origin:50% 50%;
@@ -133,10 +165,6 @@ button{font-family:inherit}
 .heat i.l3{background:rgba(10,132,255,.72)}
 .heat i.l4{background:var(--blue)}
 .heat i.today{box-shadow:0 0 0 1.5px var(--ink)}
-.ringtxt{text-align:center;margin:-110px 0 46px}
-.ringtxt b{display:block;font-size:46px;font-weight:700;font-variant-numeric:tabular-nums;
-  letter-spacing:-.05em;line-height:1}
-.ringtxt span{color:var(--faint);font-size:13px;margin-top:4px;display:block}
 
 /* level reads as a quiet colour-coded word, not a chip */
 .pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.07em;
@@ -154,7 +182,10 @@ button{font-family:inherit}
 .face{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;gap:16px;padding:28px 4px 44px;min-height:0;position:relative;
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
-.face.top{justify-content:flex-start;padding-top:56px;cursor:default}
+/* Auto-graded modes keep the question optically high without pinning it to the
+   top: centre it, then bias upward with bottom padding, so it holds its
+   position on any screen height instead of leaving a void on a tall one. */
+.face.top{justify-content:center;padding:24px 4px 22%;cursor:default}
 /* every new card arrives the same way — one short, calm move, no bounce */
 @keyframes cardin{
   from{opacity:0;transform:translateY(10px) scale(.985)}
@@ -201,9 +232,10 @@ button{font-family:inherit}
 
 /* ---------- pairing round ---------- */
 /* the round is the content, so it takes the room the card face usually gets */
-.stage.matching .face{flex:0 0 auto;padding:16px 4px 4px;gap:6px}
+.stage.matching .face{flex:0 0 auto;padding:20px 4px 10px;gap:6px}
 .stage.matching .face .word{font-size:clamp(24px,6.5vw,32px)}
-.stage.matching #st-matchpad{flex:1;display:flex;align-items:center;padding-top:8px}
+.stage.matching .face .hint{position:static}
+.stage.matching #st-matchpad{flex:1;display:flex;align-items:center;padding-top:0}
 .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
 .mtile{min-height:56px;border:0;border-radius:14px;background:var(--glass);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
@@ -330,18 +362,21 @@ select{appearance:none;-webkit-appearance:none}
 <div id="splash" class="splash"><div class="spin"></div><div id="splashmsg">Loading vocabulary…</div></div>
 
 <div id="app">
-  <div id="ambient"><i></i><i></i></div>
+  <div id="ambient"><i></i><i></i><i></i></div>
 
   <!-- ============ HOME ============ -->
   <section id="v-home" class="view">
     <div class="bar lg"><h1>Wortmeister</h1><span id="countdown" class="sub"></span></div>
     <div class="scroll">
-      <svg class="ring" width="184" height="184" viewBox="0 0 190 190" aria-hidden="true">
-        <circle class="track" cx="95" cy="95" r="80"></circle>
-        <circle id="ringtick" class="tick" cx="95" cy="95" r="80"></circle>
-        <circle id="ringfill" class="fill" cx="95" cy="95" r="80" stroke-dasharray="0 503"></circle>
-      </svg>
-      <div class="ringtxt"><b id="ringpct">0%</b><span id="ringsub">not started yet</span></div>
+      <div class="ringwrap">
+        <svg class="ring" viewBox="0 0 190 190" aria-hidden="true">
+          <circle class="track" cx="95" cy="95" r="80"></circle>
+          <circle id="ringtick" class="tick" cx="95" cy="95" r="80"></circle>
+          <circle id="ringfill" class="fill" cx="95" cy="95" r="80" stroke-dasharray="0 503"></circle>
+        </svg>
+        <b id="ringpct">0</b>
+      </div>
+      <div id="ringsub" class="ringsub">not started yet</div>
 
       <!-- Home asks one question: what should I do now. Every number lives
            under Stats, so this screen never competes with itself. -->
@@ -533,6 +568,15 @@ select{appearance:none;-webkit-appearance:none}
         <input type="number" id="set-new" min="0" max="200" step="5">
         <label for="set-max">Maximum reviews per day</label>
         <input type="number" id="set-max" min="20" max="600" step="10">
+      </div>
+
+      <h2>Voice</h2>
+      <div class="card">
+        <label class="check"><input type="checkbox" id="set-speak">
+          <span>Read answers aloud</span></label>
+        <p class="sub" style="margin:10px 0 14px">German answers are read in
+          German, English answers in English. Tap a revealed answer to hear it
+          again.</p>
       </div>
 
       <h2>What to study</h2>

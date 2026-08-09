@@ -28,7 +28,7 @@ const CFG = {
   defaults: {
     exam: '2026-11-11', newPerDay: 0, maxReviews: 250,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
-    streak: 0, lastDay: null, history: {}, medians: {}
+    streak: 0, lastDay: null, history: {}, medians: {}, speak: false
   }
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
@@ -81,6 +81,12 @@ function replayEnter(el) {
 function setTint(level) {
   const el = $('#ambient');
   if (el) el.style.setProperty('--tint', LEVEL_TINT[level] || '#0a84ff');
+}
+/** The drifting background runs only while studying — it is the one place you
+    look at a single screen for minutes, and it costs battery everywhere else. */
+function setAmbientLive(on) {
+  const el = $('#ambient');
+  if (el) el.classList.toggle('live', !!on);
 }
 let toastT;
 function toast(msg) {
@@ -661,6 +667,78 @@ function prepChoices(pat, seed) {
   return out.slice(out.length - shift).concat(out.slice(0, out.length - shift));
 }
 
+/* ============================ speech ============================ */
+/*
+ * Reads the answer aloud when the toggle is on, in the language of the text
+ * being read: German for a German answer, English when the answer is the
+ * English gloss. Five of the six modes answer in German, which is where the
+ * pronunciation value is.
+ *
+ * Everything is guarded — jsdom has no speechSynthesis, and neither do some
+ * locked-down browsers. Absent support silently disables the feature rather
+ * than breaking a study session.
+ */
+const SPEECH = { voices: [], ready: false };
+
+function speechAvailable() {
+  return typeof speechSynthesis !== 'undefined' &&
+    typeof SpeechSynthesisUtterance !== 'undefined';
+}
+function loadVoices() {
+  if (!speechAvailable()) return;
+  SPEECH.voices = speechSynthesis.getVoices() || [];
+  SPEECH.ready = SPEECH.voices.length > 0;
+}
+/** Best available voice for a language, preferring a local one. */
+function pickVoice(lang) {
+  const want = lang.slice(0, 2);
+  const cand = SPEECH.voices.filter(v => (v.lang || '').slice(0, 2) === want);
+  if (!cand.length) return null;
+  return cand.find(v => v.localService) || cand[0];
+}
+function stopSpeech() {
+  if (speechAvailable()) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+}
+/** Say `text` in `lang`. Never throws — speech is a nicety, not a dependency. */
+function say(text, lang) {
+  if (!A.set || !A.set.speak || !speechAvailable()) return false;
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return false;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = lang;
+    const v = pickVoice(lang);
+    if (v) u.voice = v;
+    u.rate = lang.startsWith('de') ? 0.9 : 1;   // German a touch slower
+    speechSynthesis.speak(u);
+    return true;
+  } catch (e) { return false; }
+}
+
+/** What a card should read out, and in which language. */
+function speechFor(w, mode) {
+  if (!w) return null;
+  switch (mode) {
+    // the answer here is the English gloss, so that is what gets read
+    case 'de2en': return { text: w.en, lang: 'en-US' };
+    case 'en2de': return { text: display(w), lang: 'de-DE' };
+    case 'type': return { text: typeTarget(w), lang: 'de-DE' };
+    case 'article': return { text: w.article + ' ' + w.lemma, lang: 'de-DE' };
+    case 'verb': return { text: [w.lemma, w.prt, w.pp].filter(Boolean).join(', '), lang: 'de-DE' };
+    default: return { text: w.lemma, lang: 'de-DE' };
+  }
+}
+function speakCard(w, mode) {
+  // a governed preposition is only worth hearing in its sentence
+  if (mode === 'rection' && ST.pat) {
+    const p = ST.pat;
+    return say(p.ex || (p.reflexive ? 'sich ' : '') + w.lemma + ' ' + p.prep, 'de-DE');
+  }
+  const s = speechFor(w, mode);
+  if (s) say(s.text, s.lang);
+}
+
 /* ============================ queues ============================ */
 function untriaged() {
   const out = [];
@@ -910,6 +988,8 @@ function go(name) {
   if (name === 'settings') renderSettings();
   if (name === 'triage') startTriage();
   if (name === 'study') startStudy();
+  setAmbientLive(name === 'study' || name === 'triage');
+  if (name !== 'study') stopSpeech();
   window.scrollTo(0, 0);
 }
 function buildNav() {
@@ -1416,6 +1496,7 @@ function reveal() {
   const st = getState(w.id) || newState();
   const iv = previewIntervals(st);
   for (let k = 0; k < 4; k++) $('#i' + k).textContent = iv[k];
+  speakCard(w, ST.mode);
 }
 $('#st-reveal').addEventListener('click', reveal);
 $('#st-face').addEventListener('click', reveal);
@@ -1485,6 +1566,7 @@ function showResult(ok, title, detail) {
   $('#st-answer').classList.remove('hidden');
   if ($('#st-gram').innerHTML) $('#st-gram').classList.remove('hidden');
   $('#st-hint').textContent = '';
+  speakCard(ST.queue[ST.i], ST.mode);
 }
 
 function submitTyped() {
@@ -1839,6 +1921,8 @@ function renderSettings() {
   $('#set-exam').value = A.set.exam;
   $('#set-new').value = A.set.newPerDay;
   $('#set-max').value = A.set.maxReviews;
+  $('#set-speak').checked = !!A.set.speak;
+  $('#set-speak').disabled = !speechAvailable();
 
   const counts = {};
   for (const w of A.words) {
@@ -1856,6 +1940,24 @@ function renderSettings() {
 $('#set-exam').addEventListener('change', e => { A.set.exam = e.target.value; saveSettings(); });
 $('#set-new').addEventListener('change', e => { A.set.newPerDay = +e.target.value || 0; saveSettings(); });
 $('#set-max').addEventListener('change', e => { A.set.maxReviews = +e.target.value || 250; saveSettings(); });
+$('#set-speak').addEventListener('change', e => {
+  A.set.speak = e.target.checked;
+  saveSettings();
+  if (A.set.speak) {
+    loadVoices();
+    // iOS wants the first utterance inside a user gesture; this tap is one
+    say('Bereit', 'de-DE');
+    toast('Answers will be read aloud');
+  } else {
+    stopSpeech();
+    toast('Voice off');
+  }
+});
+/* tap the revealed answer to hear it again */
+$('#st-answer').addEventListener('click', e => {
+  e.stopPropagation();
+  if (ST.queue[ST.i]) speakCard(ST.queue[ST.i], ST.mode);
+});
 $('#scope').addEventListener('change', e => {
   const k = e.target.dataset.scope;
   if (!k) return;
@@ -1922,6 +2024,11 @@ async function boot() {
     if (navigator.storage && navigator.storage.persist) {
       navigator.storage.persist().catch(() => {});
     }
+    // voices arrive asynchronously in most browsers
+    loadVoices();
+    if (speechAvailable() && typeof speechSynthesis.addEventListener === 'function') {
+      speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    }
     go('home');
     $('#splash').remove();
     if ('serviceWorker' in navigator) {
@@ -1947,6 +2054,8 @@ window.__wm = {
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   advanceStreak, daysBetween, heatSeries, renderHeat,
   genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
+  speechAvailable, speechFor, speakCard, say, stopSpeech, pickVoice, SPEECH,
+  setAmbientLive,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,

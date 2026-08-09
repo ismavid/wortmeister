@@ -196,7 +196,7 @@ update never invalidates progress.
 cd test && npm install && npm test
 ```
 
-328 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+345 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

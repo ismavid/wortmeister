@@ -452,6 +452,57 @@ function A_extendedSample(w){
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
 
+  // ------------------------------------------------------- voice
+  console.log('\n== voice ==');
+  const NOUN_W = { pos: 'noun', lemma: 'Bewerbung', article: 'die', plural: 'Bewerbungen', en: 'application' };
+  const VERB_W = { pos: 'verb', lemma: 'anfangen', prt: 'fing an', pp: 'angefangen', aux: 'haben', en: 'to begin' };
+
+  ok('a German→English card reads the English answer',
+    M.speechFor(NOUN_W, 'de2en').lang === 'en-US' &&
+    M.speechFor(NOUN_W, 'de2en').text === 'application',
+    JSON.stringify(M.speechFor(NOUN_W, 'de2en')));
+  ok('an English→German card reads German',
+    M.speechFor(NOUN_W, 'en2de').lang === 'de-DE');
+  ok('the German reading includes the article',
+    /die Bewerbung/.test(M.speechFor(NOUN_W, 'en2de').text),
+    M.speechFor(NOUN_W, 'en2de').text);
+  ok('a typed card reads the target with its article',
+    M.speechFor(NOUN_W, 'type').text === 'die Bewerbung',
+    M.speechFor(NOUN_W, 'type').text);
+  ok('an article card reads the article and noun only',
+    M.speechFor(NOUN_W, 'article').text === 'die Bewerbung');
+  ok('a verb-forms card reads all three parts',
+    /anfangen.*fing an.*angefangen/.test(M.speechFor(VERB_W, 'verb').text),
+    M.speechFor(VERB_W, 'verb').text);
+  ok('verb forms are read in German', M.speechFor(VERB_W, 'verb').lang === 'de-DE');
+  ok('an unknown mode falls back to the German lemma',
+    M.speechFor(VERB_W, 'whatever').lang === 'de-DE' &&
+    M.speechFor(VERB_W, 'whatever').text === 'anfangen');
+  ok('speechFor tolerates a missing word', M.speechFor(null, 'de2en') === null);
+
+  // jsdom has no speechSynthesis — the feature must be inert, not broken
+  ok('speech reports itself unavailable here', M.speechAvailable() === false);
+  ok('saying something without support does not throw and returns false',
+    M.say('test', 'de-DE') === false);
+  ok('speakCard without support does not throw', (() => {
+    try { M.speakCard(NOUN_W, 'en2de'); return true; } catch (e) { return false; }
+  })());
+  ok('stopSpeech without support does not throw', (() => {
+    try { M.stopSpeech(); return true; } catch (e) { return false; }
+  })());
+  click('.nav button[data-go="settings"]'); await sleep(60);
+  ok('the voice toggle is offered in Settings', !!w.document.getElementById('set-speak'));
+  ok('the voice toggle is disabled when unsupported',
+    w.document.getElementById('set-speak').disabled === true);
+  click('.nav button[data-go="home"]'); await sleep(40);
+  ok('voice defaults to off', M.CFG.defaults.speak === false);
+
+  // with the toggle off, nothing is spoken even where support exists
+  const realSpeak = M.A.set.speak;
+  M.A.set.speak = false;
+  ok('nothing is said while the toggle is off', M.say('hallo', 'de-DE') === false);
+  M.A.set.speak = realSpeak;
+
   // ------------------------------------------------------- streak + freezes
   console.log('\n== streak and freezes ==');
   const sBackup = { streak: M.A.set.streak, lastDay: M.A.set.lastDay, freezes: M.A.set.freezes };
