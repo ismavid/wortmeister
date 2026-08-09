@@ -1,6 +1,12 @@
 {
   "name": "wortmeister-tests",
   "private": true,
-  "scripts": { "test": "node test_app.js" },
-  "devDependencies": { "jsdom": "^24.0.0", "fake-indexeddb": "^5.0.0" }
+  "scripts": {
+    "test": "node test_app.js && node test_compat.js",
+    "compat": "node test_compat.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "fake-indexeddb": "^5.0.0"
+  }
 }

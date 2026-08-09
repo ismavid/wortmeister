@@ -1,0 +1,31 @@
+{
+  "_comment": "Frozen snapshot of real review state as written by the shipped app. Deliberately mixes record generations: id 5 and 12 predate Phase 2 and have no `m` field at all; the 2026-07-30 history day predates Phase 3 and has no `again` counter; the settings blob predates the local-date fix and has no `tzFixed`. Nothing may rewrite these. If a change to the app mutates any value here, test_compat.js fails.",
+
+  "settings": {
+    "exam": "2026-11-11",
+    "newPerDay": 0,
+    "maxReviews": 250,
+    "scope": { "A1": true, "A2": true, "B1": true, "B2-core": true, "B2-extended": false },
+    "streak": 9,
+    "lastDay": "2026-08-05",
+    "history": {
+      "2026-07-30": { "new": 24, "rev": 118 },
+      "2026-08-04": { "new": 31, "rev": 147, "again": 22 },
+      "2026-08-05": { "new": 18, "rev": 96, "again": 11 }
+    },
+    "medians": {
+      "de2en": [2100, 2400, 1900, 3100, 2600, 2200, 2900, 2050, 3300, 2750],
+      "en2de": [3400, 3900, 3100, 4200, 3600, 3050, 4400, 3700]
+    }
+  },
+
+  "state": [
+    [5,   { "s": "known",      "e": 2.5,  "i": 0,  "d": 0,             "r": 0,  "l": 0, "p": -1, "t": 0 }],
+    [12,  { "s": "queued",     "e": 2.5,  "i": 0,  "d": 0,             "r": 0,  "l": 0, "p": -1, "u": true, "t": 0 }],
+    [33,  { "s": "learning",   "e": 2.5,  "i": 0,  "d": 1786000000000, "r": 1,  "l": 0, "p": 0,  "m": { "de2en": 1 }, "t": 3120 }],
+    [47,  { "s": "relearning", "e": 2.15, "i": 4,  "d": 1786000600000, "r": 9,  "l": 3, "p": 0,  "m": { "de2en": 4, "en2de": 3, "type": 2 }, "t": 5400 }],
+    [88,  { "s": "review",     "e": 2.65, "i": 21, "d": 1787000000000, "r": 7,  "l": 1, "p": -1, "m": { "de2en": 2, "en2de": 3, "article": 2 }, "t": 1980 }],
+    [120, { "s": "leech",      "e": 1.3,  "i": 30, "d": 1817000000000, "r": 14, "l": 8, "p": -1, "m": { "de2en": 6, "en2de": 5, "type": 3 }, "t": 8200 }],
+    [204, { "s": "review",     "e": 2.5,  "i": 60, "d": 1790000000000, "r": 11, "l": 0, "p": -1, "m": { "de2en": 3, "en2de": 3, "type": 3, "verb": 1, "rection": 1 }, "t": 2400 }]
+  ]
+}
