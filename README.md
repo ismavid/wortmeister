@@ -26,19 +26,21 @@ Safari deletes all localStorage, IndexedDB and service-worker data for a site
 after **7 days**. Apps added to the Home Screen are exempt: they run outside
 Safari with their own use counter.
 
-> Share **⎋** → **Zum Home-Bildschirm** → **Hinzufügen**
+> Share **⎋** → **Add to Home Screen** → **Add**
 
 Open it from that icon from then on. The app nags until it detects standalone
-mode. Back up occasionally anyway (Einstellungen → Sichern).
+mode. Back up occasionally anyway (Settings → Back up).
 
 ---
 
 ## How to use it
 
-**Week 1 — triage only.** Words appear rapid-fire in priority order; tap
-*Kenne ich* / *Unsicher* / *Lernen*, or swipe right for known, left for learn.
-Target ~1 s per word. Do not start studying until the A1–B1 block is triaged,
-or your queue fills with words you already know.
+**Week 1 — sorting only.** Words appear rapid-fire in priority order; tap
+*I know it* / *Not sure* / *Learn it*, or swipe right for known, left for learn.
+Target ~1 s per word. Study stays disabled until you have sorted at least some
+words, because starting earlier fills the queue with words you already know.
+
+The interface is in English; only the vocabulary itself is German.
 
 **After that — daily.** Home shows one button. Reviews come first, new words are
 interleaved so they are spread through the session rather than front-loaded.
@@ -54,34 +56,34 @@ production as you answer it:
 
 | Reps | Mode | Prompt | Answer |
 |---|---|---|---|
-| 0–1 | Karte DE → EN | `der Betrieb, Betriebe` | tap to flip, then rate |
-| 2–4 | Karte EN → DE | `business, operation` | tap to flip, then rate |
-| 5+ | Schreiben | `to develop` | type the German |
-| from 2 | Artikel | `Bewerbung` | tap der / die / das |
-| from 3 | Formen | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
-| from 3 | Präposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
+| 0–1 | German → English | `der Betrieb, Betriebe` | tap to flip, then rate |
+| 2–4 | English → German | `business, operation` | tap to flip, then rate |
+| 5+ | Type it | `to develop` | type the German |
+| from 2 | Article | `Bewerbung` | tap der / die / das |
+| from 3 | Verb forms | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
+| from 3 | Preposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
 
 Specialist drills take every third slot rather than replacing the progression:
 nouns from rep 2 (gender), verbs from rep 3 (forms, and the governed
 preposition where one exists). A verb with both alternates between them.
 
 **Every mode except the flip cards grades itself** — no buttons. Wrong is
-*Nochmal*, right is *Gut*, and the same response-time median that adjusts the
-flip modes promotes a fast answer to *Einfach* or demotes a slow one to
-*Schwer*.
+*Again*, right is *Good*, and the same response-time median that adjusts the
+flip modes promotes a fast answer to *Easy* or demotes a slow one to
+*Hard*.
 
 Spelling is forgiven; grammar is not:
 
 - case-insensitive, surrounding whitespace ignored
 - `ae` `oe` `ue` `ss` accepted for `ä` `ö` `ü` `ß`, and vice versa
 - one typo in a word longer than 5 characters still counts, but grades
-  *Schwer* and shows the correct spelling
+  *Hard* and shows the correct spelling
 - **nouns need their article.** `die Betrieb` is wrong, not a typo — der/die/das
   is the thing being tested, so it never gets the one-typo allowance
 - **verb forms lose the allowance on the ablaut vowel.** `fang an` is not a
   misspelling of `fing an`, it is a different form. A dropped letter is still
   forgiven
-- a wrong preposition ends a Präposition card immediately; the case question
+- a wrong preposition ends a Preposition card immediately; the case question
   only makes sense once the preposition is right
 
 ### A caveat on the auxiliary
@@ -90,7 +92,7 @@ The `aux` column comes from the build pipeline and is wrong for a number of
 verbs — a check of 29 unambiguous *sein*-verbs found 7 marked `haben`. The app
 carries verified corrections and accepts either auxiliary for genuinely dual
 verbs like `fahren`, but the underlying data still needs a rebuild. If a
-*Formen* card marks you wrong on an auxiliary you are sure about, you are
+*Verb forms* card marks you wrong on an auxiliary you are sure about, you are
 probably right.
 
 ---
@@ -98,7 +100,7 @@ probably right.
 ## Difficult words
 
 Eight lapses suspend a word as a *leech* so twenty impossible words cannot eat
-your session. They are listed under Statistik — tap one to restart it, or
+your session. They are listed under Stats — tap one to restart it, or
 restart all of them at once. A restarted word returns to the front of the
 queue at recognition with its lapse count cleared, and climbs the modes again.
 
@@ -109,8 +111,8 @@ queue at recognition with its lapse count cleared, and climbs the modes again.
 SM-2 with two modifications.
 
 **Response time.** A rolling median of your reveal time is kept per mode.
-Press *Gut* faster than 0.6× your median and it is promoted to *Einfach*;
-slower than 2.0× and it is demoted to *Schwer*. Times cap at 60 s so putting
+Press *Good* faster than 0.6× your median and it is promoted to *Easy*;
+slower than 2.0× and it is demoted to *Hard*. Times cap at 60 s so putting
 the phone down mid-card does not poison the median.
 
 **Exam-aware cap.** `interval = min(interval, days_until_exam)`. Nothing is
@@ -118,15 +120,15 @@ scheduled past 11 November, so every learned word gets one more look first.
 
 | | |
 |---|---|
-| Learning steps | 10 min → 1 day, graduating at 3 days (Einfach: 5) |
+| Learning steps | 10 min → 1 day, graduating at 3 days (Easy: 5) |
 | Ease | starts 2.50, clamped to [1.30, 3.00] |
 | Again / Hard / Good / Easy | ease −0.20 / −0.15 / — / +0.15 |
-| Leech | 8 lapses → suspended, listed under Statistik |
+| Leech | 8 lapses → suspended, listed under Stats |
 
 Cards due again within 20 minutes reappear in the same session, which is what
 makes the 10-minute step do real work.
 
-**Kenne ich** retires a word permanently. Reversible from the Wörter screen —
+**I know this** retires a word permanently. Reversible from the Words screen —
 tap any word marked ✓ to put it back in the queue. Nothing is ever deleted.
 
 ---
@@ -170,7 +172,7 @@ update never invalidates progress.
 cd test && npm install && node test_app.js
 ```
 
-270 assertions: data-file integrity, boot, triage persistence through a fake
+272 assertions: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
@@ -186,4 +188,4 @@ against is only observable at a non-zero UTC offset.
 All three planned phases are shipped. Still open: a `vocab.v2.json` rebuild to
 fix the auxiliaries, an adjective-declension drill, and pulling the 3,354
 B2-extended words into the study queue once the core set is cleared (the switch
-already exists under Einstellungen → Umfang).
+already exists under Settings → What to study).

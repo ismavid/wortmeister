@@ -98,7 +98,7 @@ function A_extendedSample(w){
   ok('splash cleared (app booted)', !w.document.getElementById('splash'));
   ok('no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   ok('home view visible', w.document.getElementById('v-home').classList.contains('on'));
-  ok('countdown rendered', /Tage bis/.test(w.document.getElementById('countdown').textContent));
+  ok('countdown rendered', /days until the exam/.test(w.document.getElementById('countdown').textContent));
   ok('nav built', w.document.querySelectorAll('.nav button').length >= 5);
 
   const triageCount = w.document.getElementById('s-triage').textContent;
@@ -392,7 +392,7 @@ function A_extendedSample(w){
   };
 
   await openStudy(plainWord, 5);
-  ok('typing card is selected at 5 reps', el('st-mode').textContent === 'Schreiben',
+  ok('typing card is selected at 5 reps', el('st-mode').textContent === 'Type it',
     el('st-mode').textContent);
   ok('typing pad is shown', !el('st-typepad').classList.contains('hidden'));
   ok('flip grades stay hidden in typing mode', el('st-grades').classList.contains('hidden'));
@@ -431,10 +431,10 @@ function A_extendedSample(w){
   ok('a near miss does not lapse the card', got.l === 0, got.l);
 
   await openStudy(nounWord, 5);
-  ok('a noun at rep 5 is article-drilled first', el('st-mode').textContent === 'Artikel');
+  ok('a noun at rep 5 is article-drilled first', el('st-mode').textContent === 'Article');
   await openStudy(nounWord, 6);
   ok('the noun typing prompt asks for the article',
-    el('st-hint').textContent === 'Mit Artikel schreiben', el('st-hint').textContent);
+    el('st-hint').textContent === 'Include the article', el('st-hint').textContent);
   setInput(nounWord.lemma);                     // no article → wrong
   click('#st-check'); await sleep(30);
   ok('a noun typed without its article is wrong', el('st-result').className.includes('bad'));
@@ -447,7 +447,7 @@ function A_extendedSample(w){
   // ------------------------------------------------------- article drill
   console.log('\n== article drill (DOM) ==');
   await openStudy(nounWord, 2);
-  ok('article drill is selected', el('st-mode').textContent === 'Artikel',
+  ok('article drill is selected', el('st-mode').textContent === 'Article',
     el('st-mode').textContent);
   ok('article pad is shown', !el('st-artpad').classList.contains('hidden'));
   ok('the prompt is the bare noun, no article',
@@ -592,7 +592,7 @@ function A_extendedSample(w){
   const wrongAux = trueAux === 'haben' ? 'sein' : 'haben';
 
   await openStudy(verbForms, 3);
-  ok('the form drill is selected', el('st-mode').textContent === 'Formen',
+  ok('the form drill is selected', el('st-mode').textContent === 'Verb forms',
     el('st-mode').textContent);
   ok('the verb pad is shown', !el('st-verbpad').classList.contains('hidden'));
   ok('the prompt is the infinitive', el('st-prompt').textContent.includes(verbForms.lemma));
@@ -636,7 +636,7 @@ function A_extendedSample(w){
   const rNeedsCase = rpat.kase === 'Dativ' || rpat.kase === 'Akkusativ';
 
   await openStudy(verbRect, 3);
-  ok('the rection drill is selected', el('st-mode').textContent === 'Präposition',
+  ok('the rection drill is selected', el('st-mode').textContent === 'Preposition',
     el('st-mode').textContent);
   ok('the preposition pad is shown', !el('st-prepad').classList.contains('hidden'));
   ok('four preposition buttons are rendered',
@@ -792,9 +792,16 @@ function A_extendedSample(w){
     ok(v + ' renders', w.document.getElementById('v-' + v).classList.contains('on'));
   }
   ok('browse lists rows', w.document.querySelectorAll('#br-list .wrow').length > 0);
-  ok('stats rendered', /Wortstatus/.test(w.document.getElementById('stats-body').innerHTML));
+  ok('stats rendered', /Where your words are/.test(w.document.getElementById('stats-body').innerHTML));
+  // a mode row whose counter key is missing throws and blanks the whole screen
+  const statsHTML = w.document.getElementById('stats-body').innerHTML;
+  ok('stats renders every practice mode',
+    ['German → English', 'English → German', 'Typed', 'Article', 'Verb forms', 'Preposition']
+      .every(l => statsHTML.includes(l)),
+    statsHTML.length + ' chars');
+  ok('stats renders the forecast', /Will you make it/.test(statsHTML));
   ok('settings shows install prompt',
-    /Home-Bildschirm/.test(w.document.getElementById('installcard').innerHTML));
+    /Add this to your Home Screen/.test(w.document.getElementById('installcard').innerHTML));
   ok('no errors after full pass', errors.length === 0, errors.slice(0, 3).join(' | '));
 
   console.log(`\n${pass} passed, ${fail} failed`);

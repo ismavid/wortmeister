@@ -22,8 +22,12 @@ changes. Phases 1, 2 and 3 are all shipped.
 4. **Safari deletes all script-writable storage after 7 days** for sites not
    installed to the Home Screen. Never move state to `localStorage` alone,
    never remove the install prompt, never remove backup/restore.
-5. **UI language is German**, target register B1→B2. Ismael is studying — the
-   interface is part of the practice. Code comments and docs stay in English.
+5. **UI language is English.** Only the vocabulary itself is German. This
+   reverses the original rule (German UI at B1→B2, so the interface doubled as
+   practice) — Ismael asked for English on 9 Aug 2026 because an interface you
+   have to decode gets in the way of the drill it is wrapping. Do not "restore"
+   the German UI. Grammar terms that English textbooks keep in German
+   (`Präteritum`, `Partizip II`, `der/die/das`) stay as they are.
 6. **Dark theme, mobile-first.** Minimum tap target 48px. Controls live in the
    thumb-reachable bottom third. Test at 375px wide.
 7. **Never write a review record for a deleted word.** `flush()` skips ids
@@ -38,6 +42,13 @@ changes. Phases 1, 2 and 3 are all shipped.
 9. **Settings writes are debounced.** `A.set` carries the medians and the full
    history map. Per-answer bookkeeping calls `queueSettings()`; only explicit
    edits call `saveSettings()` directly.
+10. **Bump `CACHE` in sw.js on every deploy that touches a precached asset.**
+   The service worker is cache-first, so a returning user otherwise gets the
+   new `index.html` with the old `app.js` — which fails in ways that look like
+   random breakage. This has already burned one debugging session.
+11. **Every key in `renderStats()`'s `modeReps` needs a matching row**, and
+   vice versa. A missing key makes `undefined.toLocaleString()` throw and
+   blanks the whole Stats screen; the suite guards this.
 
 ---
 
@@ -49,7 +60,7 @@ app.js                  all logic, ~950 lines, sectioned by banner comments
 sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
-test/test_app.js        270 assertions, jsdom + fake-indexeddb
+test/test_app.js        272 assertions, jsdom + fake-indexeddb
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
 ```
@@ -91,7 +102,7 @@ a record — an absent record means "not yet triaged".
 ```
 
 `known` is the terminal "never ask me again" state, set from triage or the
-grade pad. Reversible from the Wörter screen. Nothing is ever deleted.
+grade pad. Reversible from the Words screen. Nothing is ever deleted.
 
 ---
 
@@ -101,15 +112,15 @@ SM-2 with two deliberate modifications. Both are load-bearing — do not
 "simplify" them away.
 
 - **Response-time grading.** A rolling median of reveal time is kept per mode
-  (`A.set.medians`). `Gut` faster than 0.6× median promotes to `Einfach`;
-  slower than 2.0× demotes to `Schwer`. Times cap at 60 s so a put-down phone
+  (`A.set.medians`). `Good` faster than 0.6× median promotes to `Easy`;
+  slower than 2.0× demotes to `Hard`. Times cap at 60 s so a put-down phone
   doesn't poison the median.
 - **Exam-aware cap.** `interval = min(interval, daysToExam())`. Nothing is
   scheduled past 11 Nov, so every learned word gets one more look first.
 
 Learning steps `[10 min, 1 day]`, graduating at 3 days (Easy 5). Ease clamped
 `[1.3, 3.0]`, deltas `−0.20 / −0.15 / — / +0.15`. Eight lapses → `leech`,
-suspended and listed under Statistik. Cards due again within 20 minutes
+suspended and listed under Stats. Cards due again within 20 minutes
 re-enter the same session, which is what makes the 10-minute step work.
 
 `window.__wm` exposes the scheduler for tests. Keep it exported.
@@ -119,7 +130,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && node test_app.js     # expect: 70 passed, 0 failed
+cd test && npm install && node test_app.js     # expect: 272 passed, 0 failed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
@@ -145,7 +156,7 @@ brand-new card graded Hard.
 3. **Mode progression.** `pickMode()`: reps 0–1 `de2en`, 2–4 `en2de`, 5+
    `type`; nouns take `article` on every third rep from rep 2
    (`reps % 3 === 2`). Per-mode counts accumulate in `st.m` and surface under
-   Statistik.
+   Stats.
 4. **Home pacing panel.** Seven days of new words against the required daily
    line, green where the day met it.
 
@@ -165,7 +176,7 @@ grade buttons use, so scheduling behaviour cannot drift between modes.
    case. Patterns whose case is `—` (`gelten als`) skip the case step.
 3. **Leech rehabilitation.** `rehabLeech()` returns a suspended word to
    `queued` with `l = 0`, `r = 0` and ease lifted to at least 2.0, so it climbs
-   the mode progression from recognition again. Tap a word under Statistik, or
+   the mode progression from recognition again. Tap a word under Stats, or
    rehabilitate all at once.
 4. **Richer stats.** Retention over 30 days (`h.again` in the history record),
    projected completion date against the exam date, per-mode medians.

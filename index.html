@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Wortmeister">
-<title>Wortmeister — B2</title>
+<title>Wortmeister — German B2</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
 /* Liquid glass belongs to the controls that float, not to the content.
-   Content sits bare on the ambient light; only the tab bar, the input, the
+   Content sits bare on the ambient light; only the tab bar, the inputs, the
    result sheet and the close button are made of glass. */
 :root{
   --bg:#000;
@@ -104,6 +104,8 @@ button{font-family:inherit}
   margin-bottom:16px}
 .note b{display:block;margin-bottom:4px;font-weight:600;font-size:16px;letter-spacing:-.02em}
 .note.ok b{color:var(--green)}
+.note ol{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:15px}
+.note ol li{margin-bottom:5px}
 
 /* ---------- progress ring ---------- */
 .ring{display:block;margin:14px auto 6px}
@@ -122,7 +124,7 @@ button{font-family:inherit}
 .p-B1{color:var(--b1)} .p-B2{color:var(--b2)}
 .tag{color:var(--faint)}
 
-/* ---------- card stage (triage + study) ---------- */
+/* ---------- card stage (sorting + study) ---------- */
 .stage{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 20px 16px}
 .meter{height:3px;background:rgba(255,255,255,.13);border-radius:99px;overflow:hidden;
   flex:1;min-width:0}
@@ -195,6 +197,7 @@ button{font-family:inherit}
 .resultbar.bad .rtext b{color:var(--red)}
 .rtext span{display:block;font-size:15px;color:var(--dim);margin-top:3px;word-break:break-word}
 .rtext span i{font-style:normal;color:var(--ink);font-weight:500}
+.rtext span s{text-decoration:line-through;text-decoration-color:var(--red);color:var(--dim)}
 
 /* ---------- charts ---------- */
 .chart{display:flex;gap:8px;align-items:flex-end;height:56px}
@@ -203,7 +206,7 @@ button{font-family:inherit}
 .chart i.hit{background:var(--blue)}
 /* activity bars record what happened; blue-lit bars record hitting the goal */
 .chart.act i{background:rgba(10,132,255,.42)}
-.chartx{display:flex;gap:7px;margin:9px 0 0}
+.chartx{display:flex;gap:8px;margin:9px 0 0}
 .chartx span{flex:1;text-align:center;font-size:11px;color:var(--faint)}
 .goal{position:relative;height:0}
 .goal i{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,159,10,.6);display:block}
@@ -224,7 +227,7 @@ select{appearance:none;-webkit-appearance:none}
   transform:translateX(-50%);background:rgba(40,44,52,.7);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   color:var(--ink);padding:12px 20px;border-radius:99px;font-size:14px;z-index:99;
-  opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw}
+  opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;text-align:center}
 .toast.on{opacity:1}
 
 /* the tab bar floats above the content rather than sitting in the flow */
@@ -260,7 +263,7 @@ select{appearance:none;-webkit-appearance:none}
 
 /* without backdrop-filter the glass would read as flat grey — go more opaque */
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .gbtn,.typein,.search,.iconbtn,.btn.ghost,input[type=date],input[type=number],select
+  .gbtn,.typein,.search,.iconbtn::before,.btn.ghost,input[type=date],input[type=number],select
     {background:rgba(30,32,38,.94)}
   .nav{background:rgba(22,24,30,.97)}
   .toast{background:rgba(40,44,52,.97)}
@@ -274,7 +277,7 @@ select{appearance:none;-webkit-appearance:none}
 </head>
 <body>
 
-<div id="splash" class="splash"><div class="spin"></div><div id="splashmsg">Wortschatz laden…</div></div>
+<div id="splash" class="splash"><div class="spin"></div><div id="splashmsg">Loading vocabulary…</div></div>
 
 <div id="app">
   <div id="ambient"><i></i><i></i></div>
@@ -287,32 +290,32 @@ select{appearance:none;-webkit-appearance:none}
         <circle class="track" cx="95" cy="95" r="80"></circle>
         <circle id="ringfill" class="fill" cx="95" cy="95" r="80" stroke-dasharray="0 503"></circle>
       </svg>
-      <div class="ringtxt"><b id="ringpct">0%</b><span id="ringsub">noch nicht begonnen</span></div>
+      <div class="ringtxt"><b id="ringpct">0%</b><span id="ringsub">not started yet</span></div>
 
       <div id="todo"></div>
 
       <div class="card">
-        <div class="stat"><span>Heute fällig</span><b id="s-due">0</b></div>
-        <div class="stat"><span>Neue Wörter heute</span><b id="s-new">0</b></div>
-        <div class="stat"><span>Noch zu sichten</span><b id="s-triage">0</b></div>
-        <div class="stat"><span>Serie</span><b id="s-streak">0 Tage</b></div>
+        <div class="stat"><span>Due today</span><b id="s-due">0</b></div>
+        <div class="stat"><span>New words today</span><b id="s-new">0</b></div>
+        <div class="stat"><span>Left to sort</span><b id="s-triage">0</b></div>
+        <div class="stat"><span>Streak</span><b id="s-streak">0 days</b></div>
       </div>
 
-      <h2>Tempo</h2>
+      <h2>Pace</h2>
       <div id="pace"></div>
       <div class="card">
-        <div class="stat"><span>Nötig pro Tag</span><b id="s-need">–</b></div>
-        <div class="stat"><span>Ø letzte 7 Tage</span><b id="s-actual">–</b></div>
+        <div class="stat"><span>Needed per day</span><b id="s-need">–</b></div>
+        <div class="stat"><span>Your last 7 days</span><b id="s-actual">–</b></div>
         <div class="stat"><span>Status</span><b id="s-track">–</b></div>
       </div>
     </div>
     <nav class="nav" id="nav"></nav>
   </section>
 
-  <!-- ============ TRIAGE ============ -->
+  <!-- ============ SORT (triage) ============ -->
   <section id="v-triage" class="view">
     <div class="bar">
-      <button class="iconbtn" data-go="home" aria-label="Schließen">✕</button>
+      <button class="iconbtn" data-go="home" aria-label="Close">✕</button>
       <div class="meter"><i id="tg-meter" style="width:0"></i></div>
       <span id="tg-count" class="sub"></span>
     </div>
@@ -320,15 +323,15 @@ select{appearance:none;-webkit-appearance:none}
       <div class="face" id="tg-face">
         <div class="meta"><span id="tg-lvl" class="pill"></span><span id="tg-fach" class="pill tag"></span></div>
         <div class="word" id="tg-word"></div>
-        <div class="hint">Kennst du dieses Wort?</div>
+        <div class="hint">Do you already know this word?</div>
       </div>
       <div class="pad">
         <div class="g3">
-          <button class="gbtn again" data-tg="learn">Lernen<small>kenne ich nicht</small></button>
-          <button class="gbtn hard" data-tg="unsure">Unsicher<small>vielleicht</small></button>
-          <button class="gbtn know" data-tg="know">Kenne ich<small>nie mehr fragen</small></button>
+          <button class="gbtn again" data-tg="learn">Learn it<small>don't know it</small></button>
+          <button class="gbtn hard" data-tg="unsure">Not sure<small>maybe</small></button>
+          <button class="gbtn know" data-tg="know">I know it<small>never ask again</small></button>
         </div>
-        <button class="btn ghost sm" data-tg="undo">Rückgängig</button>
+        <button class="btn ghost sm" data-tg="undo">Undo last</button>
       </div>
     </div>
   </section>
@@ -336,40 +339,40 @@ select{appearance:none;-webkit-appearance:none}
   <!-- ============ STUDY ============ -->
   <section id="v-study" class="view">
     <div class="bar">
-      <button class="iconbtn" data-go="home" aria-label="Schließen">✕</button>
+      <button class="iconbtn" data-go="home" aria-label="Close">✕</button>
       <div class="meter"><i id="st-meter" style="width:0"></i></div>
       <span id="st-count" class="sub"></span>
     </div>
-    <h1 id="st-title" class="hidden">Lernen</h1>
+    <h1 id="st-title" class="hidden">Study</h1>
     <div class="stage">
       <div class="face" id="st-face">
         <div class="meta"><span id="st-lvl" class="pill"></span><span id="st-mode" class="pill tag"></span></div>
         <div class="word" id="st-prompt"></div>
         <div class="answer hidden" id="st-answer"></div>
         <div class="gram hidden" id="st-gram"></div>
-        <div class="hint" id="st-hint">Tippen zum Aufdecken</div>
+        <div class="hint" id="st-hint">Tap to reveal</div>
       </div>
 
       <!-- flip modes: reveal, then rate -->
       <div class="pad" id="st-pad">
-        <button class="btn" id="st-reveal">Aufdecken</button>
+        <button class="btn" id="st-reveal">Show answer</button>
       </div>
       <div class="pad hidden" id="st-grades">
         <div class="g4">
-          <button class="gbtn again" data-grade="0">Nochmal<small id="i0"></small></button>
-          <button class="gbtn hard"  data-grade="1">Schwer<small id="i1"></small></button>
-          <button class="gbtn good"  data-grade="2">Gut<small id="i2"></small></button>
-          <button class="gbtn easy"  data-grade="3">Einfach<small id="i3"></small></button>
+          <button class="gbtn again" data-grade="0">Again<small id="i0"></small></button>
+          <button class="gbtn hard"  data-grade="1">Hard<small id="i1"></small></button>
+          <button class="gbtn good"  data-grade="2">Good<small id="i2"></small></button>
+          <button class="gbtn easy"  data-grade="3">Easy<small id="i3"></small></button>
         </div>
-        <button class="btn ghost sm" data-grade="know">Kenne ich — nie mehr fragen</button>
+        <button class="btn ghost sm" data-grade="know">I know this — never ask again</button>
       </div>
 
       <!-- typing mode: write the German -->
       <div class="pad hidden" id="st-typepad">
         <input class="typein" id="st-input" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="done"
-               placeholder="Deutsches Wort eingeben" aria-label="Deutsches Wort eingeben">
-        <button class="btn" id="st-check" disabled>Prüfen</button>
+               placeholder="Type the German" aria-label="Type the German word">
+        <button class="btn" id="st-check" disabled>Check</button>
       </div>
 
       <!-- article drill: der / die / das -->
@@ -385,15 +388,15 @@ select{appearance:none;-webkit-appearance:none}
       <div class="pad hidden" id="st-verbpad">
         <input class="typein sm" id="st-vprt" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="next"
-               placeholder="Präteritum" aria-label="Präteritum">
+               placeholder="Präteritum" aria-label="Präteritum (simple past)">
         <input class="typein sm" id="st-vpp" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="done"
-               placeholder="Partizip II" aria-label="Partizip II">
+               placeholder="Partizip II" aria-label="Partizip II (past participle)">
         <div class="g2">
           <button class="gbtn auxbtn" data-aux="haben">haben</button>
           <button class="gbtn auxbtn" data-aux="sein">sein</button>
         </div>
-        <button class="btn" id="st-vcheck" disabled>Prüfen</button>
+        <button class="btn" id="st-vcheck" disabled>Check</button>
       </div>
 
       <!-- rection: which preposition, then which case -->
@@ -402,8 +405,8 @@ select{appearance:none;-webkit-appearance:none}
       </div>
       <div class="pad hidden" id="st-casepad">
         <div class="g2">
-          <button class="gbtn pbtn" data-case="Dativ">Dativ</button>
-          <button class="gbtn pbtn" data-case="Akkusativ">Akkusativ</button>
+          <button class="gbtn pbtn" data-case="Dativ">Dative</button>
+          <button class="gbtn pbtn" data-case="Akkusativ">Accusative</button>
         </div>
       </div>
 
@@ -413,24 +416,31 @@ select{appearance:none;-webkit-appearance:none}
           <div class="ricon" id="st-ricon">✓</div>
           <div class="rtext"><b id="st-rtitle"></b><span id="st-rbody"></span></div>
         </div>
-        <button class="btn" id="st-continue">Weiter</button>
+        <button class="btn" id="st-continue">Continue</button>
+      </div>
+
+      <!-- end of session -->
+      <div class="pad hidden" id="st-donepad">
+        <button class="btn" data-go="home">Back to home</button>
       </div>
     </div>
   </section>
 
-  <!-- ============ BROWSE ============ -->
+  <!-- ============ WORDS ============ -->
   <section id="v-browse" class="view">
-    <div class="bar lg"><h1>Wörter</h1><span id="br-count" class="sub"></span></div>
+    <div class="bar lg"><h1>Words</h1><span id="br-count" class="sub"></span></div>
     <div class="scroll">
-      <input class="search" id="br-q" placeholder="Suchen" autocomplete="off" autocapitalize="off">
+      <input class="search" id="br-q" placeholder="Search German or English" autocomplete="off" autocapitalize="off">
       <div class="row" style="margin-bottom:6px">
-        <select id="br-lvl"><option value="">Alle Stufen</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select>
+        <select id="br-lvl"><option value="">All levels</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select>
         <select id="br-state">
-          <option value="">Alle</option><option value="new">Ungesichtet</option>
-          <option value="learning">Am Lernen</option><option value="review">Im Review</option>
-          <option value="known">Gekonnt</option><option value="leech">Schwierig</option>
+          <option value="">All words</option><option value="new">Not sorted</option>
+          <option value="learning">Learning</option><option value="review">In review</option>
+          <option value="known">Known</option><option value="leech">Difficult</option>
         </select>
       </div>
+      <p class="sub" style="margin:8px 0 2px">Tap a word to mark it known, or tap a known
+        word to put it back in the queue.</p>
       <div id="br-list"></div>
     </div>
     <nav class="nav"></nav>
@@ -438,41 +448,41 @@ select{appearance:none;-webkit-appearance:none}
 
   <!-- ============ STATS ============ -->
   <section id="v-stats" class="view">
-    <div class="bar lg"><h1>Statistik</h1></div>
+    <div class="bar lg"><h1>Stats</h1></div>
     <div class="scroll" id="stats-body"></div>
     <nav class="nav"></nav>
   </section>
 
   <!-- ============ SETTINGS ============ -->
   <section id="v-settings" class="view">
-    <div class="bar lg"><h1>Einstellungen</h1></div>
+    <div class="bar lg"><h1>Settings</h1></div>
     <div class="scroll">
       <div id="installcard"></div>
 
-      <h2>Prüfung</h2>
+      <h2>Exam</h2>
       <div class="card">
-        <label for="set-exam">Prüfungstermin</label>
+        <label for="set-exam">Exam date</label>
         <input type="date" id="set-exam">
-        <label for="set-new">Neue Wörter pro Tag (0 = automatisch)</label>
+        <label for="set-new">New words per day (0 = work it out for me)</label>
         <input type="number" id="set-new" min="0" max="200" step="5">
-        <label for="set-max">Maximale Reviews pro Tag</label>
+        <label for="set-max">Maximum reviews per day</label>
         <input type="number" id="set-max" min="20" max="600" step="10">
       </div>
 
-      <h2>Umfang</h2>
+      <h2>What to study</h2>
       <div class="card" id="scope"></div>
 
-      <h2>Daten</h2>
+      <h2>Data</h2>
       <div class="card">
         <p class="sub" style="margin:14px 0">
-          Safari löscht Website-Daten nach 7 Tagen. Zum Home-Bildschirm hinzugefügte
-          Apps sind ausgenommen — trotzdem regelmäßig sichern.
+          Safari deletes website data after 7 days. Apps added to the Home Screen are
+          exempt — but back up regularly anyway.
         </p>
         <div class="row" style="margin-bottom:9px">
-          <button class="btn ghost sm" id="btn-export">Sichern</button>
-          <button class="btn ghost sm" id="btn-import">Wiederherstellen</button>
+          <button class="btn ghost sm" id="btn-export">Back up</button>
+          <button class="btn ghost sm" id="btn-import">Restore</button>
         </div>
-        <button class="btn ghost sm" id="btn-reset">Alles zurücksetzen</button>
+        <button class="btn ghost sm" id="btn-reset">Reset everything</button>
         <input type="file" id="file-import" accept="application/json" class="hidden">
       </div>
       <p class="sub" style="text-align:center;margin-top:26px" id="ver"></p>

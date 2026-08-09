@@ -26,9 +26,11 @@ const CFG = {
   }
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
+/* Mode labels name the task, not the internal key — the pill is the only
+   thing telling you what this card is going to ask for. */
 const MODE_LABEL = {
-  de2en: 'DE → EN', en2de: 'EN → DE', type: 'Schreiben', article: 'Artikel',
-  verb: 'Formen', rection: 'Präposition'
+  de2en: 'German → English', en2de: 'English → German', type: 'Type it',
+  article: 'Article', verb: 'Verb forms', rection: 'Preposition'
 };
 
 /* The `aux` column is inherited from the build pipeline and is wrong for a
@@ -197,7 +199,7 @@ function grammar(w) {
     const parts = [w.prt, (auxLabel ? auxLabel + ' ' : '') + w.pp]
       .filter(x => x && x.trim());
     if (parts.length) bits.push('<b>' + esc(w.lemma + ', ' + parts.join(', ')) + '</b>');
-    if (w.sep) bits.push('trennbar · 3. Pers. <b>' + esc(w.p3) + '</b>');
+    if (w.sep) bits.push('separable · he/she/it <b>' + esc(w.p3) + '</b>');
     // the word-level `rection` column ships empty; the real patterns are in
     // data.verbPrep, indexed by lemma at load
     const pats = rectionFor(w);
@@ -208,7 +210,7 @@ function grammar(w) {
       ).join('<br>'));
     }
   } else if (w.pos === 'noun' && w.plural) {
-    bits.push('Plural: <b>' + esc(w.plural) + '</b>');
+    bits.push('plural: <b>' + esc(w.plural) + '</b>');
   }
   return bits.join('<br>');
 }
@@ -708,8 +710,8 @@ function recentPace(days) {
 
 /* ============================ router ============================ */
 const NAV = [
-  ['home', '◎', 'Start'], ['study', '▤', 'Lernen'],
-  ['browse', '☰', 'Wörter'], ['stats', '◔', 'Statistik'], ['settings', '⚙', 'Mehr']
+  ['home', '◎', 'Home'], ['study', '▤', 'Study'],
+  ['browse', '☰', 'Words'], ['stats', '◔', 'Stats'], ['settings', '⚙', 'Settings']
 ];
 let current = 'home';
 function go(name) {
@@ -751,10 +753,11 @@ function renderHome() {
   const pct = scoped.length ? known / scoped.length : 0;
   $('#ringfill').setAttribute('stroke-dasharray', `${(pct * CIRC).toFixed(1)} ${CIRC}`);
   $('#ringpct').textContent = Math.round(pct * 100) + '%';
-  $('#ringsub').textContent = `${known.toLocaleString('de')} von ${scoped.length.toLocaleString('de')} Wörtern`;
+  $('#ringsub').textContent =
+    `${known.toLocaleString('en')} of ${scoped.length.toLocaleString('en')} words`;
 
   const dte = daysToExam();
-  $('#countdown').textContent = dte + ' Tage bis zur Prüfung';
+  $('#countdown').textContent = dte + ' days until the exam';
 
   const remaining = remainingToLearn();
   const need = Math.ceil(remaining / dte);
@@ -764,38 +767,57 @@ function renderHome() {
   const newLeft = Math.max(0, autoNewTarget(remaining) - doneToday);
   $('#s-due').textContent = Math.min(due, A.set.maxReviews);
   $('#s-new').textContent = newLeft;
-  $('#s-triage').textContent = untr.toLocaleString('de');
-  $('#s-streak').textContent = (A.set.streak || 0) + ' Tage';
+  $('#s-triage').textContent = untr.toLocaleString('en');
+  $('#s-streak').textContent = (A.set.streak || 0) + (A.set.streak === 1 ? ' day' : ' days');
 
-  $('#s-need').textContent = need + ' Wörter';
+  $('#s-need').textContent = need + (need === 1 ? ' word' : ' words');
   const avg = recentPace(7);
-  $('#s-actual').textContent = avg + ' Wörter';
+  $('#s-actual').textContent = avg + (avg === 1 ? ' word' : ' words');
   const tr = $('#s-track');
-  if (!triaged) { tr.textContent = 'Sichten zuerst'; tr.style.color = 'var(--gold)'; }
-  else if (avg >= need) { tr.textContent = 'Im Plan'; tr.style.color = 'var(--green)'; }
-  else { tr.textContent = 'Im Rückstand'; tr.style.color = 'var(--gold)'; }
+  if (!triaged) { tr.textContent = 'Sort first'; tr.style.color = 'var(--gold)'; }
+  else if (avg >= need) { tr.textContent = 'On track'; tr.style.color = 'var(--green)'; }
+  else { tr.textContent = 'Behind'; tr.style.color = 'var(--gold)'; }
   renderPace(need);
 
   // primary action
   const todo = $('#todo');
   const bits = [];
   if (!isStandalone()) bits.push(installBanner());
+  if (!triaged) bits.push(firstRunGuide());
   if (untr > 0) {
     bits.push(`<button class="btn" data-go="triage" style="margin-bottom:10px">
-      Sichten — ${untr.toLocaleString('de')} übrig</button>`);
+      Sort words — ${untr.toLocaleString('en')} left</button>`);
   }
+  // Studying before anything is sorted fills the queue with words already
+  // known, which is the one way to waste the whole schedule.
+  const cards = Math.min(due, A.set.maxReviews) + newLeft;
   bits.push(`<button class="btn ${untr > 0 ? 'ghost' : ''}" data-go="study"
-      ${(due + newLeft) === 0 ? 'disabled' : ''}>
-      ${(due + newLeft) === 0 ? 'Heute alles erledigt ✓'
-      : `Lernen — ${Math.min(due, A.set.maxReviews) + newLeft} Karten`}</button>`);
+      ${(!triaged || cards === 0) ? 'disabled' : ''}>
+      ${!triaged ? 'Sort some words first'
+      : cards === 0 ? 'Nothing due today'
+      : `Study — ${cards.toLocaleString('en')} cards`}</button>`);
   todo.innerHTML = bits.join('');
+}
+
+/** Shown until the first word is sorted — the flow is not self-evident. */
+function firstRunGuide() {
+  return `<div class="note">
+    <b>Start by sorting your words</b>
+    <ol>
+      <li>Each word appears once. Mark the ones you already know so they never
+        enter your study queue.</li>
+      <li>Aim for about a second per word — swipe right if you know it, left to
+        learn it.</li>
+      <li>Sort the A1–B1 words before you start studying, or the queue fills up
+        with words you already know.</li>
+    </ol></div>`;
 }
 
 /** Seven days of new words against the required daily pace. */
 function renderPace(need) {
   const series = paceSeries(7);
   const top = Math.max(need, ...series.map(d => d.n), 1);
-  const DOW = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const bars = series.map(d =>
     `<div><i class="${d.n >= need && d.n > 0 ? 'hit' : ''}"
         style="height:${Math.max(3, d.n / top * 100)}%" title="${d.key}: ${d.n}"></i></div>`
@@ -814,10 +836,10 @@ function isStandalone() {
 }
 function installBanner() {
   return `<div class="note">
-    <b>Zum Home-Bildschirm hinzufügen</b>
-    <p class="sub" style="margin:0">Safari löscht alle Daten dieser Seite nach 7 Tagen.
-    Als App auf dem Home-Bildschirm bleibt dein Fortschritt erhalten.<br><br>
-    Teilen-Symbol ⎋ → „Zum Home-Bildschirm“.</p></div>`;
+    <b>Add this to your Home Screen</b>
+    <p class="sub" style="margin:0">Safari deletes all data for this site after
+    7 days. Added to the Home Screen, it runs as an app and your progress
+    survives.<br><br>Share ⎋ → “Add to Home Screen”.</p></div>`;
 }
 
 /* ============================ triage ============================ */
@@ -828,7 +850,8 @@ function startTriage() {
 }
 function nextTriage() {
   if (TG.i >= TG.list.length) {
-    $('#tg-word').innerHTML = '<span style="font-size:22px;color:var(--green)">Fertig ✓</span>';
+    $('#tg-word').innerHTML =
+      '<span style="font-size:22px;color:var(--green)">All sorted</span>';
     $('#tg-count').textContent = '';
     $('#tg-meter').style.width = '100%';
     setTimeout(() => go('home'), 900);
@@ -840,7 +863,7 @@ function nextTriage() {
   setTint(lv);
   $('#tg-lvl').textContent = lv;
   $('#tg-lvl').className = 'pill p-' + lv;
-  $('#tg-fach').textContent = w.fach ? 'Fachdeutsch' : '';
+  $('#tg-fach').textContent = w.fach ? 'Technical' : '';
   $('#tg-fach').style.display = w.fach ? '' : 'none';
   $('#tg-count').textContent = `${TG.i + 1} / ${TG.list.length}`;
   $('#tg-meter').style.width = (TG.i / TG.list.length * 100) + '%';
@@ -893,9 +916,13 @@ const AUTO_MODES = { type: true, article: true, verb: true, rection: true };
 function startStudy() {
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
   if (!ST.queue.length) {
-    $('#st-prompt').innerHTML = '<span style="font-size:20px;color:var(--green)">Heute alles erledigt ✓</span>';
-    $('#st-hint').textContent = '';
+    $('#st-prompt').innerHTML =
+      '<span style="font-size:20px;color:var(--green)">Nothing due today</span>';
+    $('#st-answer').classList.add('hidden');
+    $('#st-gram').classList.add('hidden');
+    $('#st-hint').textContent = 'Come back tomorrow, or sort more words';
     hidePads();
+    $('#st-donepad').classList.remove('hidden');
     $('#st-count').textContent = '';
     return;
   }
@@ -903,17 +930,19 @@ function startStudy() {
 }
 function hidePads() {
   ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-verbpad',
-    '#st-prepad', '#st-casepad', '#st-result']
+    '#st-prepad', '#st-casepad', '#st-result', '#st-donepad']
     .forEach(s => $(s).classList.add('hidden'));
 }
 function showCard() {
   if (ST.i >= ST.queue.length) {
     $('#st-prompt').innerHTML =
-      `<span style="font-size:20px;color:var(--green)">Sitzung fertig ✓</span>`;
+      `<span style="font-size:20px;color:var(--green)">Session complete</span>`;
     $('#st-answer').classList.add('hidden');
     $('#st-gram').classList.add('hidden');
-    $('#st-hint').textContent = ST.done + ' Karten wiederholt';
+    $('#st-hint').textContent =
+      ST.done + (ST.done === 1 ? ' card reviewed' : ' cards reviewed');
     hidePads();
+    $('#st-donepad').classList.remove('hidden');
     $('#st-meter').style.width = '100%';
     flush();
     renderHome();
@@ -939,7 +968,7 @@ function showCard() {
     $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = esc(display(w));
     $('#st-hint').textContent = isDrillableNoun(w)
-      ? 'Mit Artikel schreiben' : 'Schreib das deutsche Wort';
+      ? 'Include the article' : 'Type the German word';
     const inp = $('#st-input');
     inp.value = ''; inp.disabled = false;
     $('#st-check').disabled = true;
@@ -948,12 +977,12 @@ function showCard() {
   } else if (ST.mode === 'article') {
     $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
     $('#st-answer').innerHTML = esc(display(w));
-    $('#st-hint').textContent = 'Welcher Artikel?';
+    $('#st-hint').textContent = 'Which article?';
     $('#st-artpad').classList.remove('hidden');
   } else if (ST.mode === 'verb') {
     $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
     $('#st-answer').innerHTML = esc(verbFormsLine(w));
-    $('#st-hint').textContent = 'Präteritum, Partizip II, Hilfsverb';
+    $('#st-hint').textContent = 'Simple past, past participle, and haben or sein';
     $('#st-vprt').value = ''; $('#st-vprt').disabled = false;
     $('#st-vpp').value = ''; $('#st-vpp').disabled = false;
     ST.aux = null;
@@ -966,7 +995,7 @@ function showCard() {
     ST.prep = null;
     $('#st-prompt').innerHTML = rectionPrompt(w, ST.pat);
     $('#st-answer').innerHTML = esc(rectionAnswer(ST.pat));
-    $('#st-hint').textContent = 'Welche Präposition?';
+    $('#st-hint').textContent = 'Which preposition?';
     if (ST.pat.ex) $('#st-gram').innerHTML = '<b>' + esc(ST.pat.ex) + '</b>';
     $('#st-preps').innerHTML = prepChoices(ST.pat, w.id)
       .map(p => `<button class="gbtn pbtn" data-prep="${esc(p)}">${esc(p)}</button>`).join('');
@@ -976,7 +1005,7 @@ function showCard() {
       ? esc(display(w))
       : esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(w.en) : esc(display(w));
-    $('#st-hint').textContent = 'Tippen zum Aufdecken';
+    $('#st-hint').textContent = 'Tap to reveal';
     $('#st-pad').classList.remove('hidden');
   }
 
@@ -984,9 +1013,10 @@ function showCard() {
   $('#st-meter').style.width = (ST.i / ST.queue.length * 100) + '%';
 }
 function posLabel(p) {
-  return ({ noun: 'Nomen', verb: 'Verb', adj: 'Adjektiv', adv: 'Adverb', conj: 'Konjunktion',
-    prep: 'Präposition', pron: 'Pronomen', num: 'Numerale', det: 'Artikelwort',
-    particle: 'Partikel', intj: 'Interjektion', prefix: 'Präfix' })[p] || p;
+  return ({ noun: 'noun', verb: 'verb', adj: 'adjective', adv: 'adverb',
+    conj: 'conjunction', prep: 'preposition', pron: 'pronoun', num: 'numeral',
+    det: 'determiner', particle: 'particle', intj: 'interjection',
+    prefix: 'prefix' })[p] || p;
 }
 function reveal() {
   if (ST.revealed || ST.i >= ST.queue.length) return;
@@ -1082,16 +1112,20 @@ function submitTyped() {
   let grade;
   if (!res.ok) {
     grade = G.AGAIN;
-    showResult(false, 'Nicht ganz',
-      'Richtig: <i>' + esc(res.expected) + '</i>');
+    // showing what was typed next to the answer is the whole lesson — without
+    // it you cannot see which part you got wrong
+    showResult(false, 'Not quite',
+      'You wrote <s>' + esc(raw.trim()) + '</s><br>Answer: <i>' +
+      esc(res.expected) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Fast richtig',
-      'Schreibweise: <i>' + esc(res.expected) + '</i>');
+    showResult(true, 'Almost',
+      'You wrote <s>' + esc(raw.trim()) + '</s><br>Spelling: <i>' +
+      esc(res.expected) + '</i>');
   } else {
     // the card face already shows the word — the banner would only repeat it
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Richtig', '');
+    showResult(true, 'Correct', '');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -1106,8 +1140,9 @@ function submitArticle(picked) {
 
   const ok = picked === w.article;
   const grade = ok ? adjustGrade(G.GOOD, ST.elapsed, ST.mode) : G.AGAIN;
-  showResult(ok, ok ? 'Richtig' : 'Nicht ganz',
-    ok ? '' : '<i>' + esc(w.article + ' ' + w.lemma) + '</i>');
+  showResult(ok, ok ? 'Correct' : 'Not quite',
+    ok ? '' : 'You chose <s>' + esc(picked) + '</s><br>Answer: <i>' +
+      esc(w.article + ' ' + w.lemma) + '</i>');
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
 }
@@ -1129,16 +1164,21 @@ function submitVerb() {
   $('#st-verbpad').classList.add('hidden');
 
   const res = checkVerbForms(w, prt, pp, ST.aux);
+  const yours = [prt.trim(), pp.trim(), ST.aux].join(' · ');
   let grade;
   if (!res.ok) {
     grade = G.AGAIN;
-    showResult(false, 'Nicht ganz', 'Richtig: <i>' + esc(verbFormsLine(w)) + '</i>');
+    showResult(false, 'Not quite',
+      'You wrote <s>' + esc(yours) + '</s><br>Answer: <i>' +
+      esc(verbFormsLine(w)) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Fast richtig', 'Schreibweise: <i>' + esc(verbFormsLine(w)) + '</i>');
+    showResult(true, 'Almost',
+      'You wrote <s>' + esc(yours) + '</s><br>Spelling: <i>' +
+      esc(verbFormsLine(w)) + '</i>');
   } else {
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Richtig', '');
+    showResult(true, 'Correct', '');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -1151,7 +1191,7 @@ function syncVerbPad() {
   $(sel).addEventListener('input', syncVerbPad);
   $(sel).addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
-    e.preventDefault();
+    e.preventDefault(); e.stopPropagation();
     if (sel === '#st-vprt') $('#st-vpp').focus(); else submitVerb();
   });
 });
@@ -1199,13 +1239,17 @@ function finishRection(kase) {
   let grade;
   if (!res.prepOk) {
     grade = G.AGAIN;
-    showResult(false, 'Nicht ganz', 'Richtig: <i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+    showResult(false, 'Not quite',
+      'You chose <s>' + esc(ST.prep) + '</s><br>Answer: <i>' +
+      esc(rectionAnswer(ST.pat)) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Fast richtig', 'Fall: <i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+    showResult(true, 'Almost',
+      'Right preposition, wrong case<br>Answer: <i>' +
+      esc(rectionAnswer(ST.pat)) + '</i>');
   } else {
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Richtig', '<i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+    showResult(true, 'Correct', '<i>' + esc(rectionAnswer(ST.pat)) + '</i>');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -1219,7 +1263,7 @@ $('#st-preps').addEventListener('click', e => {
   // makes the case question meaningless
   if (ST.prep === ST.pat.prep && needsCase) {
     $('#st-prepad').classList.add('hidden');
-    $('#st-hint').textContent = 'Welcher Fall?';
+    $('#st-hint').textContent = 'Which case does it take?';
     $('#st-casepad').classList.remove('hidden');
     return;
   }
@@ -1234,7 +1278,20 @@ $('#st-input').addEventListener('input', e => {
   $('#st-check').disabled = !e.target.value.trim();
 });
 $('#st-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); submitTyped(); }
+  if (e.key !== 'Enter') return;
+  // stop the press from also reaching the document handler below, which would
+  // submit and immediately skip past the result
+  e.preventDefault(); e.stopPropagation();
+  submitTyped();
+});
+
+/* After an auto-graded answer the keyboard is already up, so Enter should
+   advance instead of forcing a reach for the button. */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || current !== 'study') return;
+  if ($('#st-result').classList.contains('hidden')) return;
+  e.preventDefault();
+  $('#st-continue').click();
 });
 $('#st-check').addEventListener('click', submitTyped);
 $$('[data-art]').forEach(b =>
@@ -1275,7 +1332,7 @@ function renderBrowse() {
       <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
       <span style="color:var(--faint);font-size:16px;width:18px;text-align:center">${badge}</span>
     </div>`;
-  }).join('') || '<div class="empty">Nichts gefunden</div>';
+  }).join('') || '<div class="empty">No words match that</div>';
 }
 ['#br-q', '#br-lvl', '#br-state'].forEach(s => {
   const el = $(s);
@@ -1288,10 +1345,10 @@ $('#br-list').addEventListener('click', e => {
   const id = +row.dataset.id, w = A.words[id], st = A.state.get(id);
   if (st && st.s === 'known') {
     A.state.delete(id); A.dirty.delete(id); DB.tx('state', 'readwrite').delete(id);
-    toast(display(w) + ' — zurück in die Warteschlange');
+    toast('Back in the queue — tap again to mark it known');
   } else {
     const n = newState(); n.s = 'known'; setState(id, n);
-    toast(display(w) + ' — als gekonnt markiert');
+    toast('Marked as known — tap again to undo');
   }
   renderBrowse();
 });
@@ -1300,7 +1357,8 @@ $('#br-list').addEventListener('click', e => {
 function renderStats() {
   const scoped = A.words.filter(inScope);
   const c = { new: 0, queued: 0, learning: 0, review: 0, known: 0, leech: 0 };
-  const modeReps = { de2en: 0, en2de: 0, type: 0, article: 0 };
+  // every key here must have a row below, or the render throws and blanks Stats
+  const modeReps = { de2en: 0, en2de: 0, type: 0, article: 0, verb: 0, rection: 0 };
   for (const w of scoped) {
     const st = A.state.get(w.id);
     if (!st) { c.new++; continue; }
@@ -1323,7 +1381,7 @@ function renderStats() {
   const left = remainingToLearn();
   const proj = projectedDays();
   const dte = daysToExam();
-  const fmt = ms => new Date(ms).toLocaleDateString('de-DE',
+  const fmt = ms => new Date(ms).toLocaleDateString('en-GB',
     { day: 'numeric', month: 'short', year: 'numeric' });
   const projLabel = proj == null ? 'noch keine Daten' : fmt(Date.now() + proj * CFG.DAY);
   const projColor = proj == null ? 'var(--dim)'
@@ -1331,77 +1389,79 @@ function renderStats() {
   const examLabel = fmt(new Date(A.set.exam + 'T09:00:00').getTime());
 
   $('#stats-body').innerHTML = `
-    <h2>Wortstatus</h2>
+    <h2>Where your words are</h2>
     <div class="card">
-      <div class="stat"><span>Gekonnt</span><b>${c.known.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Im Review</span><b>${c.review.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Am Lernen</span><b>${c.learning.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Gesichtet, wartet</span><b>${c.queued.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Ungesichtet</span><b>${c.new.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Schwierig (Leech)</span><b>${c.leech.toLocaleString('de')}</b></div>
+      <div class="stat"><span>Known</span><b>${c.known.toLocaleString('en')}</b></div>
+      <div class="stat"><span>In review</span><b>${c.review.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Learning</span><b>${c.learning.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Sorted, waiting</span><b>${c.queued.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Not sorted yet</span><b>${c.new.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Difficult</span><b>${c.leech.toLocaleString('en')}</b></div>
     </div>
-    <h2>Karten pro Tag (14 Tage)</h2>
+    <h2>Cards per day, last 14 days</h2>
     <div class="card"><div class="chart act">${bars ||
-      '<span class="sub">Noch keine Daten</span>'}</div></div>
-    <h2>Übungen nach Art</h2>
+      '<span class="sub">No data yet</span>'}</div></div>
+    <h2>Practice by type</h2>
     <div class="card">
-      <div class="stat"><span>Karte DE → EN</span><b>${modeReps.de2en.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Karte EN → DE</span><b>${modeReps.en2de.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Geschrieben</span><b>${modeReps.type.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Artikel</span><b>${modeReps.article.toLocaleString('de')}</b></div>
+      <div class="stat"><span>German → English</span><b>${modeReps.de2en.toLocaleString('en')}</b></div>
+      <div class="stat"><span>English → German</span><b>${modeReps.en2de.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Typed</span><b>${modeReps.type.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Article</span><b>${modeReps.article.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Verb forms</span><b>${modeReps.verb.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Preposition</span><b>${modeReps.rection.toLocaleString('en')}</b></div>
     </div>
-    <h2>Reaktionszeit</h2>
+    <h2>How fast you answer</h2>
     <div class="card">
-      <div class="stat"><span>Median DE → EN</span><b>${secs('de2en')}</b></div>
-      <div class="stat"><span>Median EN → DE</span><b>${secs('en2de')}</b></div>
-      <div class="stat"><span>Median Schreiben</span><b>${secs('type')}</b></div>
-      <div class="stat"><span>Median Artikel</span><b>${secs('article')}</b></div>
-      <div class="stat"><span>Median Formen</span><b>${secs('verb')}</b></div>
-      <div class="stat"><span>Median Präposition</span><b>${secs('rection')}</b></div>
+      <div class="stat"><span>German → English</span><b>${secs('de2en')}</b></div>
+      <div class="stat"><span>English → German</span><b>${secs('en2de')}</b></div>
+      <div class="stat"><span>Typed</span><b>${secs('type')}</b></div>
+      <div class="stat"><span>Article</span><b>${secs('article')}</b></div>
+      <div class="stat"><span>Verb forms</span><b>${secs('verb')}</b></div>
+      <div class="stat"><span>Preposition</span><b>${secs('rection')}</b></div>
     </div>
-    <h2>Prognose</h2>
+    <h2>Will you make it</h2>
     <div class="card">
-      <div class="stat"><span>Behalten (30 Tage)</span><b>${
-        ret == null ? '–' : Math.round(ret * 100) + ' %'}</b></div>
-      <div class="stat"><span>Noch zu lernen</span><b>${left.toLocaleString('de')}</b></div>
-      <div class="stat"><span>Fertig am</span><b style="color:${projColor}">${projLabel}</b></div>
-      <div class="stat"><span>Prüfung</span><b>${examLabel}</b></div>
+      <div class="stat"><span>Answers you got right (30 days)</span><b>${
+        ret == null ? '–' : Math.round(ret * 100) + '%'}</b></div>
+      <div class="stat"><span>Words left to learn</span><b>${left.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Finished by</span><b style="color:${projColor}">${projLabel}</b></div>
+      <div class="stat"><span>Exam</span><b>${examLabel}</b></div>
     </div>
-    ${leeches.length ? `<h2>Schwierige Wörter</h2>
-      <p class="sub" style="margin:0 0 6px">Achtmal falsch und pausiert.
-      Tippe ein Wort, um es neu zu starten.</p>
+    ${leeches.length ? `<h2>Words that keep beating you</h2>
+      <p class="sub" style="margin:0 0 6px">Wrong eight times, so they are paused.
+      Tap one to start it over from the beginning.</p>
       <div class="card">${leeches.slice(0, 40).map(w => {
         const lv = w.level.replace('*', '');
         return `<div class="wrow" data-leech="${w.id}">
           <span class="pill p-${lv}">${lv}</span>
           <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
-          <span style="color:var(--blue-lt);font-size:13px">neu starten</span>
+          <span style="color:var(--blue-lt);font-size:13px">restart</span>
         </div>`;
       }).join('')}</div>
       <button class="btn ghost sm" id="leech-all" style="margin-top:10px">
-        Alle ${leeches.length} wieder aufnehmen</button>` : ''}`;
+        Restart all ${leeches.length}</button>` : ''}`;
 }
 
 $('#stats-body').addEventListener('click', e => {
   if (e.target.closest('#leech-all')) {
     const n = rehabAllLeeches();
-    toast(n + ' Wörter wieder aufgenommen');
+    toast(n + (n === 1 ? ' word is back in the queue' : ' words are back in the queue'));
     renderStats();
     return;
   }
   const row = e.target.closest('[data-leech]');
   if (!row) return;
   const id = +row.dataset.leech;
-  if (rehabLeech(id)) toast(display(A.words[id]) + ' — neu gestartet');
+  if (rehabLeech(id)) toast(display(A.words[id]) + ' — starting over');
   renderStats();
 });
 
 /* ============================ settings ============================ */
 function renderSettings() {
   $('#installcard').innerHTML = isStandalone()
-    ? `<div class="note ok"><b>✓ Als App installiert</b>
-         <p class="sub" style="margin:0">Deine Daten sind vor Safaris
-         7-Tage-Löschung geschützt.</p></div>`
+    ? `<div class="note ok"><b>✓ Installed as an app</b>
+         <p class="sub" style="margin:0">Your progress is safe from Safari's
+         7-day data purge.</p></div>`
     : installBanner();
 
   $('#set-exam').value = A.set.exam;
@@ -1417,9 +1477,9 @@ function renderSettings() {
   $('#scope').innerHTML = Object.keys(A.set.scope).map(k =>
     `<label class="check"><input type="checkbox" data-scope="${k}"
        ${A.set.scope[k] ? 'checked' : ''}><span>${k}</span>
-     <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString('de')}</b></label>`
+     <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString('en')}</b></label>`
   ).join('');
-  $('#ver').textContent = `${A.words.length.toLocaleString('de')} Wörter · Daten v1`;
+  $('#ver').textContent = `${A.words.length.toLocaleString('en')} words · data v1`;
 }
 $('#set-exam').addEventListener('change', e => { A.set.exam = e.target.value; saveSettings(); });
 $('#set-new').addEventListener('change', e => { A.set.newPerDay = +e.target.value || 0; saveSettings(); });
@@ -1427,7 +1487,7 @@ $('#set-max').addEventListener('change', e => { A.set.maxReviews = +e.target.val
 $('#scope').addEventListener('change', e => {
   const k = e.target.dataset.scope;
   if (!k) return;
-  A.set.scope[k] = e.target.checked; saveSettings(); toast('Umfang aktualisiert');
+  A.set.scope[k] = e.target.checked; saveSettings(); toast('Scope updated');
 });
 
 /* ---- backup / restore ---- */
@@ -1444,33 +1504,34 @@ $('#btn-export').addEventListener('click', async () => {
   a.download = `wortmeister-${today()}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast('Sicherung erstellt');
+  toast('Backup saved to your downloads');
 });
 $('#btn-import').addEventListener('click', () => $('#file-import').click());
 $('#file-import').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     const d = JSON.parse(await f.text());
-    if (d.app !== 'wortmeister') throw new Error('Falsches Format');
+    if (d.app !== 'wortmeister') throw new Error('that is not a Wortmeister backup');
     A.set = Object.assign({}, CFG.defaults, d.settings || {});
     A.state = new Map(d.state || []);
     A.dirty.clear();
     await DB.clear('state');
     await DB.putMany('state', Array.from(A.state.entries()));
     await saveSettings();
-    toast(`${A.state.size} Wörter wiederhergestellt`);
+    toast(`Restored ${A.state.size.toLocaleString('en')} words`);
     go('home');
-  } catch (err) { toast('Fehler: ' + err.message); }
+  } catch (err) { toast("Couldn't restore — " + err.message); }
   e.target.value = '';
 });
 $('#btn-reset').addEventListener('click', async () => {
-  if (!confirm('Wirklich allen Fortschritt löschen? Das kann nicht rückgängig gemacht werden.')) return;
+  if (!confirm('Delete all your progress? This cannot be undone. ' +
+    'Back up first if you are not sure.')) return;
   await DB.clear('state');
   A.state = new Map();
   A.dirty.clear();
   A.set = JSON.parse(JSON.stringify(CFG.defaults));
   await saveSettings();
-  toast('Zurückgesetzt'); go('home');
+  toast('Everything reset'); go('home');
 });
 
 /* ============================ boot ============================ */
@@ -1482,7 +1543,7 @@ async function boot() {
     if (!A.set.medians) A.set.medians = {};
     if (!A.set.history) A.set.history = {};
     migrateDates();
-    $('#splashmsg').textContent = 'Wortschatz laden…';
+    $('#splashmsg').textContent = 'Loading vocabulary…';
     await loadVocab();
     A.state = await DB.all('state');
     buildNav();
@@ -1497,7 +1558,8 @@ async function boot() {
   } catch (e) {
     $('#splash').innerHTML =
       `<div style="padding:24px;text-align:center;color:var(--red)">
-         <b>Fehler beim Laden</b><br><span class="sub">${esc(e.message)}</span></div>`;
+         <b>Couldn't load the app</b><br><span class="sub">${esc(e.message)}</span>
+         <br><br><span class="sub">Check your connection and reload.</span></div>`;
     console.error(e);
   }
 }
