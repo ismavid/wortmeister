@@ -99,7 +99,10 @@ function A_extendedSample(w){
   ok('no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   ok('home view visible', w.document.getElementById('v-home').classList.contains('on'));
   ok('countdown rendered', /days until the exam/.test(w.document.getElementById('countdown').textContent));
-  ok('nav built', w.document.querySelectorAll('.nav button').length >= 5);
+  ok('nav built', w.document.querySelector('.nav').querySelectorAll('button').length === 4,
+    w.document.querySelector('.nav').textContent.trim().replace(/\s+/g, ' '));
+  ok('every view gets the same nav',
+    [...w.document.querySelectorAll('.nav')].every(n => n.querySelectorAll('button').length === 4));
 
   const triageCount = w.document.getElementById('s-triage').textContent;
   ok('triage backlog shown', triageCount && triageCount !== '0', triageCount);
@@ -144,6 +147,12 @@ function A_extendedSample(w){
 
   // ---------------------------------------------------------- study
   console.log('\n== study session ==');
+  // Study has no nav tab — you reach it from Home's primary button, which only
+  // appears once something has been sorted
+  click('.nav button[data-go="home"]'); await sleep(40);
+  ok('home offers Study once words are sorted',
+    !!w.document.querySelector('#todo [data-go="study"]'),
+    w.document.getElementById('todo').textContent.trim().replace(/\s+/g, ' '));
   click('[data-go="study"]');
   await sleep(60);
   ok('study view visible', w.document.getElementById('v-study').classList.contains('on'));
@@ -796,7 +805,7 @@ function A_extendedSample(w){
   // a mode row whose counter key is missing throws and blanks the whole screen
   const statsHTML = w.document.getElementById('stats-body').innerHTML;
   ok('stats renders every practice mode',
-    ['German → English', 'English → German', 'Typed', 'Article', 'Verb forms', 'Preposition']
+    ['German → English', 'English → German', 'Type it', 'Article', 'Verb forms', 'Preposition']
       .every(l => statsHTML.includes(l)),
     statsHTML.length + ' chars');
   ok('stats renders the forecast', /Will you make it/.test(statsHTML));

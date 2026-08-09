@@ -46,9 +46,14 @@ changes. Phases 1, 2 and 3 are all shipped.
    The service worker is cache-first, so a returning user otherwise gets the
    new `index.html` with the old `app.js` — which fails in ways that look like
    random breakage. This has already burned one debugging session.
-11. **Every key in `renderStats()`'s `modeReps` needs a matching row**, and
-   vice versa. A missing key makes `undefined.toLocaleString()` throw and
-   blanks the whole Stats screen; the suite guards this.
+11. **`renderStats()` derives `modeReps` from `MODE_LABEL`.** Keep it that way.
+   When the two lists were maintained by hand, a missing key made
+   `undefined.toLocaleString()` throw and blanked the whole Stats screen.
+12. **Home shows one action and no numbers.** Every counter lives under Stats;
+   `overview()` computes them once and `renderCounters()` fills them from both
+   screens. Home previously repeated four of them, which is what made it feel
+   busy. `nextAction()` picks the single next step — do not add a second
+   competing button.
 
 ---
 
@@ -60,7 +65,7 @@ app.js                  all logic, ~950 lines, sectioned by banner comments
 sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
-test/test_app.js        272 assertions, jsdom + fake-indexeddb
+test/test_app.js        274 assertions, jsdom + fake-indexeddb
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
 ```
@@ -130,7 +135,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && node test_app.js     # expect: 272 passed, 0 failed
+cd test && npm install && node test_app.js     # expect: 274 passed, 0 failed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

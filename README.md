@@ -42,8 +42,11 @@ words, because starting earlier fills the queue with words you already know.
 
 The interface is in English; only the vocabulary itself is German.
 
-**After that — daily.** Home shows one button. Reviews come first, new words are
-interleaved so they are spread through the session rather than front-loaded.
+**After that — daily.** Home shows one action and nothing else: Study when
+cards are waiting, Sort when they are not. Every number lives under Stats, so
+the screen you open most never asks you to read anything. Reviews come first,
+new words are interleaved so they are spread through the session rather than
+front-loaded.
 
 At ~25 new/day the daily load settles around 25–30 minutes.
 
@@ -172,7 +175,7 @@ update never invalidates progress.
 cd test && npm install && node test_app.js
 ```
 
-272 assertions: data-file integrity, boot, triage persistence through a fake
+274 assertions: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

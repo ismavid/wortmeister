@@ -366,10 +366,10 @@ function previewIntervals(st) {
     const copy = JSON.parse(JSON.stringify(st));
     applyGrade(copy, g, Date.now());
     const ms = copy.d - Date.now();
-    if (copy.s === 'leech') return 'pausiert';
-    if (ms < CFG.DAY) return Math.max(1, Math.round(ms / CFG.MIN)) + ' Min';
+    if (copy.s === 'leech') return 'paused';
+    if (ms < CFG.DAY) return Math.max(1, Math.round(ms / CFG.MIN)) + ' min';
     const d = Math.round(ms / CFG.DAY);
-    return d >= 30 ? (d / 30).toFixed(1).replace('.0', '') + ' Mon' : d + ' T';
+    return d >= 30 ? (d / 30).toFixed(1).replace('.0', '') + ' mo' : d + ' d';
   });
 }
 
@@ -709,9 +709,11 @@ function recentPace(days) {
 }
 
 /* ============================ router ============================ */
+/* No Study tab: Home's primary button is the way in, and a second route to it
+   only made the two compete. */
 const NAV = [
-  ['home', '◎', 'Home'], ['study', '▤', 'Study'],
-  ['browse', '☰', 'Words'], ['stats', '◔', 'Stats'], ['settings', '⚙', 'Settings']
+  ['home', '◎', 'Home'], ['browse', '☰', 'Words'],
+  ['stats', '◔', 'Stats'], ['settings', '⚙', 'Settings']
 ];
 let current = 'home';
 function go(name) {
@@ -739,64 +741,87 @@ document.addEventListener('click', e => {
 
 /* ============================ home ============================ */
 const CIRC = 2 * Math.PI * 80;
-function renderHome() {
-  setTint(null);
+/** Every number Home and Stats are built from, computed once. */
+function overview() {
   const scoped = A.words.filter(inScope);
-  let known = 0, learning = 0, triaged = 0;
+  let known = 0, triaged = 0;
   for (const w of scoped) {
     const st = A.state.get(w.id);
     if (!st) continue;
     triaged++;
     if (st.s === 'known' || (st.s === 'review' && st.i >= 21)) known++;
-    else if (st.s !== 'queued') learning++;
   }
-  const pct = scoped.length ? known / scoped.length : 0;
+  const remaining = remainingToLearn();
+  const dte = daysToExam();
+  const due = Math.min(dueList(Date.now()).length, A.set.maxReviews);
+  const doneToday = (A.set.history[today()] || {}).new || 0;
+  const newLeft = Math.max(0, autoNewTarget(remaining) - doneToday);
+  return {
+    scoped: scoped.length, known, triaged, untriaged: scoped.length - triaged,
+    remaining, dte, due, newLeft, cards: due + newLeft,
+    need: Math.ceil(remaining / dte)
+  };
+}
+
+function renderHome() {
+  setTint(null);
+  const o = overview();
+  const pct = o.scoped ? o.known / o.scoped : 0;
   $('#ringfill').setAttribute('stroke-dasharray', `${(pct * CIRC).toFixed(1)} ${CIRC}`);
   $('#ringpct').textContent = Math.round(pct * 100) + '%';
   $('#ringsub').textContent =
-    `${known.toLocaleString('en')} of ${scoped.length.toLocaleString('en')} words`;
+    `${o.known.toLocaleString('en')} of ${o.scoped.toLocaleString('en')} words`;
+  $('#countdown').textContent = o.dte + ' days until the exam';
+  renderCounters(o);
 
-  const dte = daysToExam();
-  $('#countdown').textContent = dte + ' days until the exam';
+  const bits = [];
+  if (!isStandalone()) bits.push(installBanner());
+  if (!o.triaged) bits.push(firstRunGuide());
+  bits.push(nextAction(o));
+  $('#todo').innerHTML = bits.join('');
+}
 
-  const remaining = remainingToLearn();
-  const need = Math.ceil(remaining / dte);
-  const due = dueList(Date.now()).length;
-  const untr = scoped.length - triaged;
-  const doneToday = (A.set.history[today()] || {}).new || 0;
-  const newLeft = Math.max(0, autoNewTarget(remaining) - doneToday);
-  $('#s-due').textContent = Math.min(due, A.set.maxReviews);
-  $('#s-new').textContent = newLeft;
-  $('#s-triage').textContent = untr.toLocaleString('en');
-  $('#s-streak').textContent = (A.set.streak || 0) + (A.set.streak === 1 ? ' day' : ' days');
+/**
+ * One obvious thing to do next, so Home never asks you to choose.
+ * Sorting comes first because studying an unsorted list fills the queue with
+ * words you already know — the one way to waste the whole schedule.
+ */
+function nextAction(o) {
+  if (!o.triaged) {
+    return '<button class="btn" data-go="triage">Start sorting</button>';
+  }
+  if (o.cards > 0) {
+    const more = o.untriaged > 0
+      ? `<button class="btn ghost sm" data-go="triage" style="margin-top:9px">
+           Sort ${o.untriaged.toLocaleString('en')} more</button>`
+      : '';
+    return `<button class="btn" data-go="study">
+      Study — ${o.cards.toLocaleString('en')} cards</button>` + more;
+  }
+  if (o.untriaged > 0) {
+    return `<button class="btn" data-go="triage">
+      Sort words — ${o.untriaged.toLocaleString('en')} left</button>`;
+  }
+  return '<button class="btn" disabled>Nothing due today</button>';
+}
 
-  $('#s-need').textContent = need + (need === 1 ? ' word' : ' words');
+/** The Today and Pace rows, which live under Stats but are kept current
+    from Home too so the tab is never stale when you open it. */
+function renderCounters(o) {
+  o = o || overview();
+  $('#s-due').textContent = o.due.toLocaleString('en');
+  $('#s-new').textContent = o.newLeft.toLocaleString('en');
+  $('#s-triage').textContent = o.untriaged.toLocaleString('en');
+  $('#s-streak').textContent =
+    (A.set.streak || 0) + (A.set.streak === 1 ? ' day' : ' days');
+  $('#s-need').textContent = o.need + (o.need === 1 ? ' word' : ' words');
   const avg = recentPace(7);
   $('#s-actual').textContent = avg + (avg === 1 ? ' word' : ' words');
   const tr = $('#s-track');
-  if (!triaged) { tr.textContent = 'Sort first'; tr.style.color = 'var(--gold)'; }
-  else if (avg >= need) { tr.textContent = 'On track'; tr.style.color = 'var(--green)'; }
+  if (!o.triaged) { tr.textContent = 'Sort first'; tr.style.color = 'var(--gold)'; }
+  else if (avg >= o.need) { tr.textContent = 'On track'; tr.style.color = 'var(--green)'; }
   else { tr.textContent = 'Behind'; tr.style.color = 'var(--gold)'; }
-  renderPace(need);
-
-  // primary action
-  const todo = $('#todo');
-  const bits = [];
-  if (!isStandalone()) bits.push(installBanner());
-  if (!triaged) bits.push(firstRunGuide());
-  if (untr > 0) {
-    bits.push(`<button class="btn" data-go="triage" style="margin-bottom:10px">
-      Sort words — ${untr.toLocaleString('en')} left</button>`);
-  }
-  // Studying before anything is sorted fills the queue with words already
-  // known, which is the one way to waste the whole schedule.
-  const cards = Math.min(due, A.set.maxReviews) + newLeft;
-  bits.push(`<button class="btn ${untr > 0 ? 'ghost' : ''}" data-go="study"
-      ${(!triaged || cards === 0) ? 'disabled' : ''}>
-      ${!triaged ? 'Sort some words first'
-      : cards === 0 ? 'Nothing due today'
-      : `Study — ${cards.toLocaleString('en')} cards`}</button>`);
-  todo.innerHTML = bits.join('');
+  renderPace(o.need);
 }
 
 /** Shown until the first word is sorted — the flow is not self-evident. */
@@ -824,9 +849,11 @@ function renderPace(need) {
   ).join('');
   const labels = series.map(d =>
     `<span>${DOW[new Date(d.key + 'T00:00:00').getDay()]}</span>`).join('');
+  // the goal line sits inside the chart and is positioned as a percentage of
+  // it, so changing the chart height cannot pull the two out of alignment
   $('#pace').innerHTML = `
-    <div class="goal"><i style="top:${(1 - need / top) * 88}px"></i></div>
-    <div class="chart">${bars}</div>
+    <div class="chart">${bars}
+      <i class="goalline" style="bottom:${(need / top * 100).toFixed(1)}%"></i></div>
     <div class="chartx">${labels}</div>`;
 }
 
@@ -859,10 +886,7 @@ function nextTriage() {
   }
   const w = TG.list[TG.i];
   $('#tg-word').textContent = display(w);
-  const lv = w.level.replace('*', '');
-  setTint(lv);
-  $('#tg-lvl').textContent = lv;
-  $('#tg-lvl').className = 'pill p-' + lv;
+  setTint(w.level.replace('*', ''));
   $('#tg-fach').textContent = w.fach ? 'Technical' : '';
   $('#tg-fach').style.display = w.fach ? '' : 'none';
   $('#tg-count').textContent = `${TG.i + 1} / ${TG.list.length}`;
@@ -953,10 +977,7 @@ function showCard() {
   ST.revealed = false;
   ST.t0 = performance.now();
 
-  const lv = w.level.replace('*', '');
-  setTint(lv);
-  $('#st-lvl').textContent = lv;
-  $('#st-lvl').className = 'pill p-' + lv;
+  setTint(w.level.replace('*', ''));
   $('#st-mode').textContent = MODE_LABEL[ST.mode];
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
@@ -1355,10 +1376,13 @@ $('#br-list').addEventListener('click', e => {
 
 /* ============================ stats ============================ */
 function renderStats() {
+  renderCounters();
   const scoped = A.words.filter(inScope);
   const c = { new: 0, queued: 0, learning: 0, review: 0, known: 0, leech: 0 };
-  // every key here must have a row below, or the render throws and blanks Stats
-  const modeReps = { de2en: 0, en2de: 0, type: 0, article: 0, verb: 0, rection: 0 };
+  // derived from MODE_LABEL so the counters and the rows cannot drift apart —
+  // a missing key here used to throw and blank the whole screen
+  const modeReps = {};
+  for (const k in MODE_LABEL) modeReps[k] = 0;
   for (const w of scoped) {
     const st = A.state.get(w.id);
     if (!st) { c.new++; continue; }
@@ -1366,12 +1390,6 @@ function renderStats() {
     else if (c[st.s] !== undefined) c[st.s]++;
     for (const k in modeReps) if (st.m && st.m[k]) modeReps[k] += st.m[k];
   }
-  const days = Object.keys(A.set.history).sort().slice(-14);
-  const maxv = Math.max(1, ...days.map(d => A.set.history[d].new + A.set.history[d].rev));
-  const bars = days.map(d => {
-    const h = A.set.history[d], v = h.new + h.rev;
-    return `<div><i style="height:${(v / maxv * 100).toFixed(0)}%" title="${d}: ${v}"></i></div>`;
-  }).join('');
   const leeches = [];
   for (const [id, st] of A.state) if (st.s === 'leech') leeches.push(A.words[id]);
 
@@ -1398,26 +1416,11 @@ function renderStats() {
       <div class="stat"><span>Not sorted yet</span><b>${c.new.toLocaleString('en')}</b></div>
       <div class="stat"><span>Difficult</span><b>${c.leech.toLocaleString('en')}</b></div>
     </div>
-    <h2>Cards per day, last 14 days</h2>
-    <div class="card"><div class="chart act">${bars ||
-      '<span class="sub">No data yet</span>'}</div></div>
-    <h2>Practice by type</h2>
+    <h2>By exercise</h2>
     <div class="card">
-      <div class="stat"><span>German → English</span><b>${modeReps.de2en.toLocaleString('en')}</b></div>
-      <div class="stat"><span>English → German</span><b>${modeReps.en2de.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Typed</span><b>${modeReps.type.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Article</span><b>${modeReps.article.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Verb forms</span><b>${modeReps.verb.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Preposition</span><b>${modeReps.rection.toLocaleString('en')}</b></div>
-    </div>
-    <h2>How fast you answer</h2>
-    <div class="card">
-      <div class="stat"><span>German → English</span><b>${secs('de2en')}</b></div>
-      <div class="stat"><span>English → German</span><b>${secs('en2de')}</b></div>
-      <div class="stat"><span>Typed</span><b>${secs('type')}</b></div>
-      <div class="stat"><span>Article</span><b>${secs('article')}</b></div>
-      <div class="stat"><span>Verb forms</span><b>${secs('verb')}</b></div>
-      <div class="stat"><span>Preposition</span><b>${secs('rection')}</b></div>
+      ${Object.keys(MODE_LABEL).map(k =>
+        `<div class="stat"><span>${MODE_LABEL[k]}</span>
+          <b>${modeReps[k].toLocaleString('en')}<i> · ${secs(k)}</i></b></div>`).join('')}
     </div>
     <h2>Will you make it</h2>
     <div class="card">
@@ -1571,6 +1574,7 @@ window.__wm = {
   CFG, G, A, ST, applyGrade, adjustGrade, clampEase, newState, previewIntervals,
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
+  overview, nextAction, renderCounters, MODE_LABEL,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,
