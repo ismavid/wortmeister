@@ -187,6 +187,9 @@ function A_extendedSample(w){
   ok('scheduler exported', !!M && typeof M.applyGrade === 'function');
 
   // new card graduating through the learning steps
+  // exact-interval assertions need the jitter off; it gets its own section below
+  M.CFG.FUZZ = 0;
+
   let st = M.newState();
   M.applyGrade(st, M.G.GOOD, Date.now());
   ok('new -> learning on first Good', st.s === 'learning', st.s);
@@ -269,6 +272,101 @@ function A_extendedSample(w){
     M.autoNewTarget() >= 10 && M.autoNewTarget() <= 60, M.autoNewTarget());
   ok('scope excludes B2-extended by default',
     !M.inScope(A_extendedSample(w)), 'tier check');
+
+  // ------------------------------------------------------- interval fuzz
+  console.log('\n== interval fuzz ==');
+  M.CFG.FUZZ = 1;
+
+  ok('fuzz leaves 1-day intervals exact', M.fuzzInterval(1) === 1);
+  ok('fuzz leaves 2-day intervals exact', M.fuzzInterval(2) === 2);
+  ok('fuzz can be switched off', (() => {
+    M.CFG.FUZZ = 0;
+    const flat = Array.from({ length: 40 }, () => M.fuzzInterval(30));
+    M.CFG.FUZZ = 1;
+    return flat.every(x => x === 30);
+  })());
+
+  const spread10 = Array.from({ length: 400 }, () => M.fuzzInterval(10));
+  ok('a 10-day interval stays within 8-12',
+    spread10.every(x => x >= 8 && x <= 12),
+    Math.min(...spread10) + '-' + Math.max(...spread10));
+  ok('a 10-day interval actually varies', new Set(spread10).size > 1,
+    [...new Set(spread10)].sort((a, b) => a - b).join(','));
+
+  const spread30 = Array.from({ length: 400 }, () => M.fuzzInterval(30));
+  ok('a 30-day interval stays within 26-34',
+    spread30.every(x => x >= 26 && x <= 34),
+    Math.min(...spread30) + '-' + Math.max(...spread30));
+  ok('the spread widens with the interval',
+    (Math.max(...spread30) - Math.min(...spread30)) >
+    (Math.max(...spread10) - Math.min(...spread10)));
+
+  // the point of the whole thing: identical cards must stop clumping
+  const clump = [];
+  for (let n = 0; n < 200; n++) {
+    const c = { s: 'review', e: 2.5, i: 10, d: 0, r: 5, l: 0, p: -1, m: {}, t: 0 };
+    M.applyGrade(c, M.G.GOOD, Date.now());
+    clump.push(c.i);
+  }
+  ok('200 identically-graded cards no longer land on one day',
+    new Set(clump).size > 3, [...new Set(clump)].sort((a, b) => a - b).join(','));
+  ok('fuzz never schedules past the exam cap',
+    clump.every(i => i <= M.daysToExam()));
+  ok('fuzz never produces a zero or negative interval', clump.every(i => i >= 1));
+
+  ok('the grade buttons still preview un-fuzzed intervals', (() => {
+    const base = { s: 'review', e: 2.5, i: 10, d: 0, r: 5, l: 0, p: -1, m: {}, t: 0 };
+    const runs = Array.from({ length: 25 }, () => M.previewIntervals(base).join('|'));
+    return new Set(runs).size === 1;
+  })(), 'previews must not jitter under the user');
+  ok('previewing does not leave fuzz disabled', M.CFG.FUZZ === 1, M.CFG.FUZZ);
+
+  // ------------------------------------------------------- session ordering
+  console.log('\n== session ordering ==');
+  const CFG_GAP = M.CFG.SIBLING_GAP;
+  ok('the day seed is stable within a day', M.daySeed() === M.daySeed());
+  const r1 = M.seededRandom(42), r2 = M.seededRandom(42);
+  ok('the shuffle is reproducible from a seed',
+    Array.from({ length: 5 }, () => r1()).join() ===
+    Array.from({ length: 5 }, () => r2()).join());
+  const deck = Array.from({ length: 30 }, (_, i) => ({ lemma: 'w' + i }));
+  ok('shuffling keeps every card',
+    M.shuffleSeeded(deck, M.seededRandom(7)).length === 30);
+  ok('shuffling actually reorders',
+    M.shuffleSeeded(deck, M.seededRandom(7)).map(x => x.lemma).join() !==
+    deck.map(x => x.lemma).join());
+  ok('the same seed gives the same order',
+    M.shuffleSeeded(deck, M.seededRandom(7)).map(x => x.lemma).join() ===
+    M.shuffleSeeded(deck, M.seededRandom(7)).map(x => x.lemma).join());
+
+  ok('word families group a stem', M.familyKey({ lemma: 'Bewerbung' }) === M.familyKey({ lemma: 'bewerben' }),
+    M.familyKey({ lemma: 'Bewerbung' }) + ' vs ' + M.familyKey({ lemma: 'bewerben' }));
+  ok('unrelated words are not grouped',
+    M.familyKey({ lemma: 'bewerben' }) !== M.familyKey({ lemma: 'bewegen' }));
+  ok('families fold umlauts', M.familyKey({ lemma: 'Bäcker' }) === M.familyKey({ lemma: 'baecker' }));
+
+  const sibs = [
+    { lemma: 'bewerben' }, { lemma: 'Bewerbung' }, { lemma: 'Bewerber' },
+    { lemma: 'Haus' }, { lemma: 'Tisch' }, { lemma: 'Stuhl' }, { lemma: 'Lampe' },
+    { lemma: 'gehen' }, { lemma: 'Wagen' }, { lemma: 'Kind' }, { lemma: 'Blume' },
+    { lemma: 'Fenster' }, { lemma: 'Zeitung' }, { lemma: 'Wolke' }, { lemma: 'Pflanze' }
+  ];
+  const spaced = M.spaceSiblings(sibs, CFG_GAP);
+  ok('sibling spacing keeps every card', spaced.length === sibs.length);
+  ok('sibling spacing loses no card',
+    sibs.every(x => spaced.some(y => y.lemma === x.lemma)));
+  ok('related words are pushed apart when there is filler to use', (() => {
+    const fam = M.familyKey({ lemma: 'bewerben' });
+    const idx = spaced.map((w, i) => [M.familyKey(w), i]).filter(p => p[0] === fam).map(p => p[1]);
+    for (let i = 1; i < idx.length; i++) if (idx[i] - idx[i - 1] <= CFG_GAP) return false;
+    return true;
+  })(), spaced.map(x => x.lemma).join(' '));
+  // when spacing is impossible it must degrade, not drop cards
+  const crowded = M.spaceSiblings(
+    [{ lemma: 'bewerben' }, { lemma: 'Bewerbung' }, { lemma: 'Bewerber' }], 5);
+  ok('spacing degrades gracefully when every card is a sibling',
+    crowded.length === 3 && new Set(crowded.map(x => x.lemma)).size === 3,
+    crowded.map(x => x.lemma).join(' '));
 
   // ------------------------------------------------------- local calendar
   console.log('\n== local dates ==');

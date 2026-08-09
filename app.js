@@ -19,6 +19,12 @@ const CFG = {
   TYPO_MIN_LEN: 5,                       // Levenshtein slack only above this
   MAX_REENTRY: 3,                        // re-looks per word per session
   SETTINGS_DEBOUNCE: 1500,
+  FUZZ: 1,                               // interval jitter on; 0 disables (tests)
+  FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
+  SIBLING_GAP: 5,                        // cards to keep between related words
+  MIN_DAY: 20,                           // cards that still count as a day done
+  FREEZE_EVERY: 7,                       // clean days earned per streak freeze
+  FREEZE_MAX: 2,
   defaults: {
     exam: '2026-11-11', newPerDay: 0, maxReviews: 250,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
@@ -314,12 +320,30 @@ function adjustGrade(grade, ms, mode) {
   return G.GOOD;
 }
 
+/**
+ * Anki-style interval jitter. Without it, every word sorted in the same sprint
+ * and graded the same way resurfaces on the same day forever, and the clumps
+ * grow as intervals lengthen. A 10-day interval becomes 8–12, a 30-day one
+ * 26–34. Short intervals are left exact so the learning steps stay predictable.
+ */
+function fuzzInterval(d) {
+  if (!CFG.FUZZ || d < CFG.FUZZ_MIN_INTERVAL) return d;
+  // tiered, not a flat percentage — a flat 5% on 25 days gives only three
+  // possible landing days, which barely breaks up a clump. These tiers
+  // reproduce Anki's documented spreads: 3→2-4, 10→8-12, 15→13-17, 30→26-34.
+  let delta;
+  if (d < 7) delta = 1;
+  else if (d < 20) delta = Math.max(2, Math.round(d * 0.15));
+  else delta = Math.max(4, Math.round(d * 0.13));
+  return d + Math.round((Math.random() * 2 - 1) * delta);
+}
+
 /** Apply a grade. Mutates and returns the state record. */
 function applyGrade(st, grade, now) {
   const cap = daysToExam();
   const dueIn = ms => { st.d = now + ms; return st; };
   const dueDays = d => {
-    st.i = Math.max(1, Math.min(Math.round(d), cap));
+    st.i = Math.max(1, Math.min(Math.round(fuzzInterval(d)), cap));
     st.d = now + st.i * CFG.DAY;
     return st;
   };
@@ -360,8 +384,13 @@ function applyGrade(st, grade, now) {
   return dueDays(st.i * st.e * 1.3);
 }
 
-/** What each button would schedule, for the labels under the grade buttons. */
+/** What each button would schedule, for the labels under the grade buttons.
+    Previewed without fuzz so the label matches the nominal interval — Anki
+    hides the jitter from these buttons for the same reason. */
 function previewIntervals(st) {
+  const fuzz = CFG.FUZZ;
+  CFG.FUZZ = 0;
+  try {
   return [G.AGAIN, G.HARD, G.GOOD, G.EASY].map(g => {
     const copy = JSON.parse(JSON.stringify(st));
     applyGrade(copy, g, Date.now());
@@ -371,6 +400,61 @@ function previewIntervals(st) {
     const d = Math.round(ms / CFG.DAY);
     return d >= 30 ? (d / 30).toFixed(1).replace('.0', '') + ' mo' : d + ' d';
   });
+  } finally { CFG.FUZZ = fuzz; }
+}
+
+/* ---- session ordering ---- */
+
+/** Deterministic PRNG, seeded per day, so reloading mid-session does not
+    reshuffle the queue under you. */
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function daySeed() {
+  const d = today();
+  let h = 2166136261;
+  for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d.charCodeAt(i), 16777619);
+  return h;
+}
+function shuffleSeeded(arr, rnd) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+/** Crude morphological family — the folded first five letters of the lemma.
+    Groups bewerben / Bewerbung / Bewerber without needing a stemmer. */
+function familyKey(w) {
+  const s = foldGerman(w.lemma).replace(/[^a-z]/g, '');
+  return s.slice(0, 5);
+}
+
+/** Keep related words apart, so recall does not collapse into pattern-matching
+    off the card you saw two seconds ago. */
+function spaceSiblings(list, gap) {
+  const pending = list.slice(), out = [];
+  while (pending.length) {
+    let pick = 0;
+    for (let i = 0; i < pending.length; i++) {
+      const fam = familyKey(pending[i]);
+      let clash = false;
+      for (let k = Math.max(0, out.length - gap); k < out.length; k++) {
+        if (familyKey(out[k]) === fam) { clash = true; break; }
+      }
+      if (!clash) { pick = i; break; }
+    }
+    out.push(pending.splice(pick, 1)[0]);
+  }
+  return out;
 }
 
 /* ======================= typed-answer checking ======================= */
@@ -575,12 +659,15 @@ function autoNewTarget(remaining) {
 /** Today's session: all due reviews (capped) interleaved with new words. */
 function buildSession() {
   const now = Date.now();
-  const due = dueList(now).slice(0, A.set.maxReviews);
+  const rnd = seededRandom(daySeed());
+  // pick the most overdue first, then shuffle: selection should respect the
+  // schedule, presentation order within a day should not be predictable
+  const due = shuffleSeeded(dueList(now).slice(0, A.set.maxReviews), rnd);
   const doneToday = (A.set.history[today()] || {}).new || 0;
   const want = Math.max(0, autoNewTarget() - doneToday);
   let fresh = queuedNew().slice(0, want);
   if (!fresh.length && !due.length) fresh = untriaged().slice(0, want); // never blank
-  if (!due.length) return fresh;
+  if (!due.length) return spaceSiblings(fresh, CFG.SIBLING_GAP);
 
   // interleave so new cards are spread through the session, not front-loaded
   const out = [], every = fresh.length ? Math.max(1, Math.floor(due.length / fresh.length)) : 0;
@@ -590,7 +677,7 @@ function buildSession() {
     if (fi < fresh.length && every && (i + 1) % every === 0) out.push(fresh[fi++]);
   });
   while (fi < fresh.length) out.push(fresh[fi++]);
-  return out;
+  return spaceSiblings(out, CFG.SIBLING_GAP);
 }
 
 /**
@@ -1575,6 +1662,7 @@ window.__wm = {
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL,
+  fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,
