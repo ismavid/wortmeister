@@ -230,6 +230,12 @@ button{font-family:inherit}
   line-height:1}
 .gmark{font-style:normal;opacity:.5;font-size:.6em;vertical-align:.25em;margin-right:.25em}
 
+/* a cloze sentence is prose, not a headword — it needs a readable size */
+.sentence{display:block;font-size:clamp(21px,5.6vw,27px);font-weight:600;
+  line-height:1.35;letter-spacing:-.02em}
+.sentence .blank{font-style:normal;color:var(--blue-lt);letter-spacing:.06em}
+.sentence b{font-weight:700;color:var(--blue-lt)}
+
 /* ---------- pairing round ---------- */
 /* the round is the content, so it takes the room the card face usually gets */
 .stage.matching .face{flex:0 0 auto;padding:20px 4px 10px;gap:6px}
@@ -475,6 +481,11 @@ select{appearance:none;-webkit-appearance:none}
           <button class="gbtn auxbtn" data-aux="sein">sein</button>
         </div>
         <button class="btn" id="st-vcheck" disabled>Check</button>
+      </div>
+
+      <!-- cloze: which word fits the sentence -->
+      <div class="pad hidden" id="st-clozepad">
+        <div class="g2" id="st-clozeopts"></div>
       </div>
 
       <!-- rection: which preposition, then which case -->

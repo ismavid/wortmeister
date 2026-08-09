@@ -452,6 +452,79 @@ function A_extendedSample(w){
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
 
+  // ------------------------------------------------------- sentence bank
+  console.log('\n== cloze ==');
+  const sentPath = path.join(APP, 'data/sentences.v1.json');
+  const haveBank = fs.existsSync(sentPath);
+  ok('the sentence bank ships with the app', haveBank, sentPath);
+
+  const BANK = haveBank ? JSON.parse(fs.readFileSync(sentPath, 'utf8')) : { byId: {} };
+  const bankIds = Object.keys(BANK.byId);
+  ok('the bank is version 1', BANK.v === 1);
+  ok('the bank credits its source', /Tatoeba/.test(BANK.source || ''), BANK.source);
+  ok('the bank covers a useful share of the scope', bankIds.length > 3000, bankIds.length);
+
+  // every blank must be exactly the lemma, on a word boundary, appearing once
+  const LET = 'A-Za-zÄÖÜäöüßẞ';
+  let badCut = 0, midWord = 0, echoed = 0, badRange = 0;
+  for (const id of bankIds) {
+    const word = M.A.words[+id];
+    if (!word) { badRange++; continue; }
+    for (const s of BANK.byId[id]) {
+      const [de, at, len] = s;
+      if (at < 0 || at + len > de.length) { badRange++; continue; }
+      if (de.substr(at, len).toLowerCase() !== String(word.lemma).toLowerCase()) badCut++;
+      const before = at === 0 ? ' ' : de[at - 1];
+      const after = at + len >= de.length ? ' ' : de[at + len];
+      if (new RegExp('[' + LET + ']').test(before) ||
+          new RegExp('[' + LET + ']').test(after)) midWord++;
+      const esc2 = String(word.lemma).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp('(^|[^' + LET + '])' + esc2 + '([^' + LET + ']|$)', 'gi');
+      if ((de.match(re) || []).length > 1) echoed++;
+    }
+  }
+  // "an" inside "Man" was a real bug: indexOf finds substrings, not words
+  ok('every blank is exactly the lemma', badCut === 0, badCut);
+  ok('no blank lands inside another word', midWord === 0, midWord);
+  ok('the answer never appears elsewhere in its own sentence', echoed === 0, echoed);
+  ok('every blank offset is in range and maps to a real word', badRange === 0, badRange);
+  ok('every sentence carries an English translation',
+    bankIds.every(id => BANK.byId[id].every(s => s[3] && s[3].length > 2)));
+
+  // the bank keys on existing ids and never disturbs the vocabulary
+  ok('the bank keys on existing word ids',
+    bankIds.every(id => M.A.words[+id] && M.A.words[+id].id === +id));
+  ok('the vocabulary file is untouched by the bank', M.A.words.length === 10390);
+
+  // the app must survive with no bank at all — fetch is stubbed to vocab here
+  ok('a missing or malformed bank leaves cloze simply unavailable',
+    typeof M.A.sentences === 'object', JSON.stringify(Object.keys(M.A.sentences).length));
+  ok('sentencesFor returns null when a word has none',
+    M.sentencesFor({ id: 999999 }) === null);
+
+  // choices
+  const cw = M.A.words.find(x => x.pos === 'noun' && M.inScope(x));
+  const cch = M.clozeChoices(cw, cw.id);
+  ok('four cloze options are offered', cch.length === 4, cch.join(','));
+  ok('the cloze answer is among them', cch.includes(cw.lemma), cch.join(','));
+  ok('the cloze options are distinct', new Set(cch).size === 4, cch.join(','));
+  ok('the options are stable for the same card',
+    M.clozeChoices(cw, cw.id).join() === cch.join());
+  ok('distractors share the part of speech', (() => {
+    const others = cch.filter(o => o !== cw.lemma);
+    return others.every(o => (M.A.byPos.get(cw.pos) || []).some(x => x.lemma === o));
+  })(), cch.join(','));
+  ok('no distractor is from the answer word family',
+    cch.filter(o => o !== cw.lemma).every(o => M.familyKey({ lemma: o }) !== M.familyKey(cw)));
+
+  const sample = [['Er ist sehr klug heute.', 12, 4, 'He is very smart today.']];
+  ok('the prompt hides the answer',
+    !/klug/.test(M.clozePrompt(sample[0])), M.clozePrompt(sample[0]));
+  ok('the prompt keeps the rest of the sentence',
+    /Er ist sehr/.test(M.clozePrompt(sample[0])) && /heute/.test(M.clozePrompt(sample[0])));
+  ok('the filled sentence restores the answer',
+    /klug/.test(M.clozeFilled(sample[0])));
+
   // ------------------------------------------------------- voice
   console.log('\n== voice ==');
   const NOUN_W = { pos: 'noun', lemma: 'Bewerbung', article: 'die', plural: 'Bewerbungen', en: 'application' };
@@ -822,9 +895,9 @@ function A_extendedSample(w){
     M.checkRection(NOCASE, 'als', null).needsCase === false);
 
   const ch = M.prepChoices(PAT, 42);
-  ok('four options are offered', ch.length === 4, ch.join(','));
+  ok('four cloze options are offered', cch.length === 4, cch.join(','));
   ok('the answer is among them', ch.includes('um'), ch.join(','));
-  ok('the options are distinct', new Set(ch).size === 4, ch.join(','));
+  ok('the cloze options are distinct', new Set(cch).size === 4, cch.join(','));
   ok('the options are stable for the same card',
     M.prepChoices(PAT, 42).join(',') === ch.join(','));
   ok('different cards get different layouts',

@@ -8,6 +8,9 @@
 /* ============================ config ============================ */
 const CFG = {
   data: 'data/vocab.v1.json',
+  // a SEPARATE file keyed by the ids already in vocab.v1.json — the vocabulary
+  // is never edited, so no id can move and no progress can be re-pointed
+  sentences: 'data/sentences.v1.json',
   dbName: 'wortmeister', dbVer: 1,
   MIN: 60000, DAY: 86400000,
   LEARN_STEPS: [10 * 60000, 86400000],   // 10 min, 1 day
@@ -37,7 +40,7 @@ const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
 const MODE_LABEL = {
   de2en: 'German → English', en2de: 'English → German', type: 'Type it',
   article: 'Article', verb: 'Verb forms', rection: 'Preposition',
-  match: 'Match'
+  match: 'Match', cloze: 'In a sentence'
 };
 /* Gender gets a constant shape because colour is already spoken for by the
    CEFR ambient. One silent, repeated cue across ~5,700 nouns. */
@@ -156,6 +159,8 @@ const A = {
   verbPrep: [],
   prepBy: new Map(),  // bare lemma -> [{prep, kase, en, ex, reflexive}]
   family: new Map(),  // 5-letter stem -> [word id]
+  byPos: new Map(),   // pos -> [word], for cloze distractors
+  sentences: {},      // word id -> [[german, blankAt, blankLen, english]]
   state: new Map(),   // id -> review record (only touched words)
   set: null,          // settings
   dirty: new Set(),
@@ -311,6 +316,81 @@ async function loadVocab() {
   A.verbPrep = cached.verbPrep || [];
   indexRection();
   indexFamilies();
+  indexPos();
+}
+
+/** Same-part-of-speech pools, for plausible cloze distractors. */
+function indexPos() {
+  A.byPos = new Map();
+  for (const w of A.words) {
+    if (!inScope(w)) continue;
+    let l = A.byPos.get(w.pos);
+    if (!l) A.byPos.set(w.pos, l = []);
+    l.push(w);
+  }
+}
+
+/**
+ * The cloze bank is optional. A missing or malformed file leaves `cloze`
+ * simply unavailable — pickMode falls through to typing — rather than
+ * breaking a study session. It is cached under its own key, so fetching it
+ * can never disturb the cached vocabulary.
+ */
+async function loadSentences() {
+  let cached = await DB.get('kv', 'sentences');
+  if (!cached || cached.v !== 1 || !cached.byId) {
+    try {
+      const r = await fetch(CFG.sentences, { cache: 'force-cache' });
+      const fresh = r.ok ? await r.json() : null;
+      if (fresh && fresh.v === 1 && fresh.byId) {
+        cached = fresh;
+        await DB.set('kv', 'sentences', cached);
+      } else {
+        cached = null;                  // never cache something unusable
+      }
+    } catch (e) {
+      console.warn('sentence bank unavailable', e);
+      cached = null;
+    }
+  }
+  A.sentences = (cached && cached.byId) || {};
+}
+
+/** Sentences available for a word, or null. */
+function sentencesFor(w) {
+  const l = A.sentences[w.id];
+  return (l && l.length) ? l : null;
+}
+
+/**
+ * Four options for a cloze: the answer plus three same-part-of-speech words of
+ * similar length. Similar length matters — a short answer among long
+ * distractors is solvable without reading the sentence.
+ */
+function clozeChoices(w, seed) {
+  const pool = (A.byPos.get(w.pos) || []).filter(x =>
+    x.id !== w.id && familyKey(x) !== familyKey(w));
+  const near = pool.filter(x => Math.abs(x.lemma.length - w.lemma.length) <= 3);
+  const from = near.length >= 8 ? near : pool;
+  const rnd = seededRandom(Math.abs(seed) + 101);
+  const picked = [];
+  for (let guard = 0; guard < 400 && picked.length < 3 && from.length; guard++) {
+    const c = from[Math.floor(rnd() * from.length)];
+    if (!picked.some(x => x.id === c.id)) picked.push(c);
+  }
+  const opts = picked.map(x => x.lemma).concat([w.lemma]);
+  return shuffleSeeded(opts, seededRandom(Math.abs(seed) + 271));
+}
+
+/** The sentence with the target replaced by a blank. */
+function clozePrompt(s) {
+  return esc(s[0].slice(0, s[1])) + '<i class="blank">_____</i>' +
+    esc(s[0].slice(s[1] + s[2]));
+}
+/** The sentence with the target restored and highlighted. */
+function clozeFilled(s) {
+  return esc(s[0].slice(0, s[1])) + '<b>' + esc(s[0].substr(s[1], s[2])) + '</b>' +
+    esc(s[0].slice(s[1] + s[2]));
 }
 
 /* verbPrep rows are [verb, preposition, case, gloss, example]. Two of them
@@ -839,6 +919,9 @@ function pickMode(w) {
 
   if (reps < 2) return 'de2en';
   if (reps < 5) return 'en2de';
+  // production alternates between writing the word cold and choosing it in
+  // context; cloze only when this word actually has a sentence
+  if (reps % 2 === 1 && sentencesFor(w)) return 'cloze';
   return 'type';
 }
 
@@ -1228,7 +1311,7 @@ $$('[data-tg]').forEach(b => b.addEventListener('click', () => triage(b.dataset.
 /* ============================ study ============================ */
 const ST = {
   queue: [], i: 0, mode: 'de2en', t0: 0, revealed: false, done: 0,
-  elapsed: 0, again: new Map(), t0session: 0, wrong: 0,
+  elapsed: 0, again: new Map(), t0session: 0, wrong: 0, sent: null,
   aux: null,        // auxiliary picked in the verb-form drill
   pat: null,        // rection pattern being asked
   prep: null        // preposition picked, before the case step
@@ -1269,7 +1352,8 @@ function startStudy() {
 }
 function hidePads() {
   ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-verbpad',
-    '#st-prepad', '#st-casepad', '#st-matchpad', '#st-result', '#st-donepad']
+    '#st-prepad', '#st-casepad', '#st-matchpad', '#st-clozepad',
+    '#st-result', '#st-donepad']
     .forEach(s => $(s).classList.add('hidden'));
 }
 
@@ -1450,6 +1534,16 @@ function showCard() {
     $$('[data-aux]').forEach(b => b.classList.remove('sel'));
     $('#st-vcheck').disabled = true;
     $('#st-verbpad').classList.remove('hidden');
+  } else if (ST.mode === 'cloze') {
+    const list = sentencesFor(w);
+    ST.sent = list[(getState(w.id) ? getState(w.id).r : 0) % list.length];
+    $('#st-prompt').innerHTML = '<span class="sentence">' + clozePrompt(ST.sent) + '</span>';
+    $('#st-answer').innerHTML = '<span class="sentence">' + clozeFilled(ST.sent) + '</span>';
+    $('#st-gram').innerHTML = esc(ST.sent[3]);
+    $('#st-hint').textContent = 'Which word fits?';
+    $('#st-clozeopts').innerHTML = clozeChoices(w, w.id)
+      .map(o => `<button class="gbtn pbtn" data-cloze="${esc(o)}">${esc(o)}</button>`).join('');
+    $('#st-clozepad').classList.remove('hidden');
   } else if (ST.mode === 'rection') {
     const pats = rectionFor(w);
     ST.pat = pats[(getState(w.id) ? getState(w.id).r : 0) % pats.length];
@@ -1726,6 +1820,25 @@ function finishRection(kase) {
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
 }
+/* ---- cloze: choose the word that fits ---- */
+$('#st-clozeopts').addEventListener('click', e => {
+  const b = e.target.closest('[data-cloze]');
+  const w = ST.queue[ST.i];
+  if (!b || !w || ST.revealed || ST.mode !== 'cloze') return;
+  ST.revealed = true;
+  ST.elapsed = performance.now() - ST.t0;
+  $('#st-clozepad').classList.add('hidden');
+
+  const picked = b.dataset.cloze;
+  const ok = picked === w.lemma;
+  const grade = ok ? adjustGrade(G.GOOD, ST.elapsed, ST.mode) : G.AGAIN;
+  showResult(ok, ok ? 'Correct' : 'Not quite',
+    ok ? '' : 'You chose <s>' + esc(picked) + '</s><br>Answer: <i>' +
+      esc(w.lemma) + '</i>');
+  commitAnswer(w, grade, ST.elapsed);
+  $('#st-result').classList.remove('hidden');
+});
+
 $('#st-preps').addEventListener('click', e => {
   const b = e.target.closest('[data-prep]');
   if (!b || ST.revealed || ST.mode !== 'rection' || ST.prep) return;
@@ -1935,7 +2048,10 @@ function renderSettings() {
        ${A.set.scope[k] ? 'checked' : ''}><span>${k}</span>
      <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString('en')}</b></label>`
   ).join('');
-  $('#ver').textContent = `${A.words.length.toLocaleString('en')} words · data v1`;
+  // CC BY 2.0 FR requires attribution wherever the sentences are used
+  const nSent = Object.keys(A.sentences).length;
+  $('#ver').innerHTML = `${A.words.length.toLocaleString('en')} words · data v1` +
+    (nSent ? `<br>Example sentences from Tatoeba (CC BY 2.0 FR)` : '');
 }
 $('#set-exam').addEventListener('change', e => { A.set.exam = e.target.value; saveSettings(); });
 $('#set-new').addEventListener('change', e => { A.set.newPerDay = +e.target.value || 0; saveSettings(); });
@@ -2031,6 +2147,10 @@ async function boot() {
     }
     go('home');
     $('#splash').remove();
+    // The sentence bank is another 313 KB and is only needed from rep 5, so it
+    // loads after first paint. Until it arrives, cloze cards fall back to
+    // typing — no waiting, and no failure mode if it never arrives.
+    loadSentences();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
@@ -2055,6 +2175,7 @@ window.__wm = {
   advanceStreak, daysBetween, heatSeries, renderHeat,
   genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
   speechAvailable, speechFor, speakCard, say, stopSpeech, pickVoice, SPEECH,
+  sentencesFor, clozeChoices, clozePrompt, clozeFilled, loadSentences, indexPos,
   setAmbientLive,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,

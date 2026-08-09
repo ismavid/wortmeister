@@ -65,7 +65,8 @@ app.js                  all logic, ~950 lines, sectioned by banner comments
 sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
-test/test_app.js        345 assertions, jsdom + fake-indexeddb
+data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
+test/test_app.js        367 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -136,7 +137,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 345 passed, then 22 passed
+cd test && npm install && npm test     # expect: 367 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
@@ -237,11 +238,26 @@ progress, and no backup restore may be needed.
 6. **Gender shapes** (der ▲ die ● das ■) and **word families** on reveal,
    indexed from a folded five-letter stem at load.
 
+7. **Cloze** (`cloze`). `data/sentences.v1.json` — 9,240 Tatoeba sentences over
+   4,993 words, built by `tools/vocab-build/build_sentences.js`. **A separate
+   file keyed by existing ids; `vocab.v1.json` is never rewritten.** Loaded
+   after first paint and entirely optional — a missing or malformed bank makes
+   `pickMode` fall through to typing rather than failing. Production alternates
+   type (even reps) and cloze (odd reps, when a sentence exists).
+
+   The builder is deliberately strict, and two of its rules exist because the
+   first run produced broken cards:
+   - the blank comes from `matchAll` offsets, not `indexOf` — `indexOf('an')`
+     blanked the "an" inside "Man"
+   - a sentence is only used when the target appears **in its dictionary
+     form**, or the inflected answer stands out among lemma-shaped distractors
+   - plus: the target must appear exactly once, be the only word above its own
+     level (i+1), and the sentence must be 4–12 words with a translation
+   - **CC BY 2.0 FR requires attribution** — it is in Settings and the README.
+
 ### Not built yet
 
-`4.4` sentence cloze needs a Tatoeba-derived sentence bank — a new file keyed
-by existing word id, never an edit to `vocab.v1.json`. `4.5` per-word mnemonic
-(`st.n`) is unstarted. Both are specified in `docs/PHASE-4.md`.
+`4.5` per-word mnemonic (`st.n`) is unstarted; see `docs/PHASE-4.md`.
 
 ## Then: Phase 4 (original plan)
 

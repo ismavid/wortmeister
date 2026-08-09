@@ -62,7 +62,8 @@ production as you answer it:
 | opening | Match | five words, five meanings | tap a word, then its meaning |
 | 0–1 | German → English | `der Betrieb, Betriebe` | tap to flip, then rate |
 | 2–4 | English → German | `business, operation` | tap to flip, then rate |
-| 5+ | Type it | `to develop` | type the German |
+| 5+ even | Type it | `to develop` | type the German |
+| 5+ odd | In a sentence | `_____ Mensch ist sterblich.` | pick the word that fits |
 | from 2 | Article | `Bewerbung` | tap der / die / das |
 | from 3 | Verb forms | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
 | from 3 | Preposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
@@ -188,6 +189,21 @@ No framework, no bundler, no npm at runtime. Data is versioned
 (`vocab.v1.json`), and review state keys on stable word `id`, so a vocabulary
 update never invalidates progress.
 
+`data/sentences.v1.json` (830 KB, ~313 KB gzipped) is the cloze bank: 9,240
+sentences covering 4,993 of the 7,035 words in scope. It is a **separate file
+keyed by the ids already in `vocab.v1.json`** — the vocabulary is never
+rewritten, so no id can move. It loads after first paint, and if it is missing
+the *In a sentence* mode simply does not appear.
+
+### Sentence credits
+
+Example sentences come from **[Tatoeba](https://tatoeba.org)**, used under
+**CC BY 2.0 FR**. Rebuild with:
+
+```bash
+node tools/vocab-build/build_sentences.js <corpus-dir> .
+```
+
 ---
 
 ## Tests
@@ -196,7 +212,7 @@ update never invalidates progress.
 cd test && npm install && npm test
 ```
 
-345 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+367 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
