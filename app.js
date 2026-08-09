@@ -69,6 +69,15 @@ const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/** Restart the enter animation on an element that is already on screen.
+    Reading offsetWidth forces the reflow that makes the replay take. */
+function replayEnter(el) {
+  if (!el) return;
+  el.classList.remove('enter');
+  void el.offsetWidth;
+  el.classList.add('enter');
+}
+
 function setTint(level) {
   const el = $('#ambient');
   if (el) el.style.setProperty('--tint', LEVEL_TINT[level] || '#0a84ff');
@@ -1232,6 +1241,8 @@ function startMatch(words) {
   $('#st-matchgrid').innerHTML = rows.join('');
   hidePads();
   $('#st-matchpad').classList.remove('hidden');
+  $('#st-face').closest('.stage').classList.add('matching');
+  replayEnter($('#st-matchpad'));
 }
 
 function matchTap(btn) {
@@ -1278,6 +1289,7 @@ function finishMatch() {
   // the round consumed the first five cards of the queue
   ST.i += MT.words.length;
   MT.words = null;
+  $('#st-face').closest('.stage').classList.remove('matching');
   showCard();
 }
 
@@ -1323,6 +1335,7 @@ function showCard() {
   ST.mode = pickMode(w);
   ST.revealed = false;
   ST.t0 = performance.now();
+  replayEnter($('#st-face'));
 
   setTint(w.level.replace('*', ''));
   $('#st-mode').textContent = MODE_LABEL[ST.mode];
@@ -1379,6 +1392,8 @@ function showCard() {
 
   $('#st-count').textContent = `${ST.i + 1} / ${ST.queue.length}`;
   $('#st-meter').style.width = (ST.i / ST.queue.length * 100) + '%';
+  const pad = $$('.pad').find(p => !p.classList.contains('hidden'));
+  if (pad) replayEnter(pad);
 }
 function posLabel(p) {
   return ({ noun: 'noun', verb: 'verb', adj: 'adjective', adv: 'adverb',

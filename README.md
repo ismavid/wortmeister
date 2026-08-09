@@ -59,6 +59,7 @@ production as you answer it:
 
 | Reps | Mode | Prompt | Answer |
 |---|---|---|---|
+| opening | Match | five words, five meanings | tap a word, then its meaning |
 | 0–1 | German → English | `der Betrieb, Betriebe` | tap to flip, then rate |
 | 2–4 | English → German | `business, operation` | tap to flip, then rate |
 | 5+ | Type it | `to develop` | type the German |
@@ -97,6 +98,26 @@ carries verified corrections and accepts either auxiliary for genuinely dual
 verbs like `fahren`, but the underlying data still needs a rebuild. If a
 *Verb forms* card marks you wrong on an auxiliary you are sure about, you are
 probably right.
+
+---
+
+## Coming back tomorrow
+
+The ring on Home measures **today**, not your lifetime — a lifetime bar sits at
+21% and moves 0.3% a day, which reinforces nothing. It fills as you work and
+turns green when the day is clear. The gold tick is the minimum day: hit that
+and the day still counts, so a busy evening does not become an all-or-nothing
+choice.
+
+A missed day is covered by a **streak freeze** rather than resetting a six-week
+streak to 1. You earn one per clean week, capped at two. Twelve weeks of
+activity show as a heatmap under Stats.
+
+Cards do not clump. Intervals carry Anki-style jitter, so words you sorted in
+the same sprint and graded the same way stop resurfacing on the same day; the
+due order within a day is shuffled; and words from one family (`bewerben` /
+`Bewerbung` / `Bewerber`) are kept apart so recall cannot ride on the card you
+just saw.
 
 ---
 
@@ -172,10 +193,10 @@ update never invalidates progress.
 ## Tests
 
 ```bash
-cd test && npm install && node test_app.js
+cd test && npm install && npm test
 ```
 
-274 assertions: data-file integrity, boot, triage persistence through a fake
+328 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

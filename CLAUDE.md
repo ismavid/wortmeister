@@ -65,7 +65,8 @@ app.js                  all logic, ~950 lines, sectioned by banner comments
 sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
-test/test_app.js        274 assertions, jsdom + fake-indexeddb
+test/test_app.js        328 assertions, jsdom + fake-indexeddb
+test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
 ```
@@ -135,7 +136,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && node test_app.js     # expect: 274 passed, 0 failed
+cd test && npm install && npm test     # expect: 328 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
@@ -204,7 +205,45 @@ Two rows carry `"D"` instead of a preposition (`sich widmen`, `zustimmen`);
 those verbs take a bare dative object and are dropped. The word-level
 `rection` column ships **empty on all 10,390 rows** — never read it.
 
-## Then: Phase 4
+## Shipped: Phase 4 (4.0–4.3 + iOS pass)
+
+Plan: `docs/PHASE-4.md`. Governed by one rule — no change may alter stored
+progress, and no backup restore may be needed.
+
+0. **`test/test_compat.js` + `test/fixtures/state-v1.json`.** Seeds IndexedDB
+   with a frozen snapshot of real state, boots, walks every screen, waits out
+   the debounced writer, then proves every record is byte-identical. The
+   fixture deliberately mixes generations: records with no `m`, a history day
+   with no `again`, settings with no `tzFixed`. **Run this before claiming any
+   change is safe.** Build features against it, not around it.
+1. **Interval fuzz.** `fuzzInterval()` — tiered, not a flat percentage,
+   reproducing Anki's spreads (3→2-4, 10→8-12, 15→13-17, 30→26-34). Without it
+   words sorted together and graded alike resurfaced together forever.
+   `CFG.FUZZ = 0` disables it for exact-interval tests. Previews are always
+   un-fuzzed.
+2. **Session ordering.** Due cards are selected most-overdue-first then
+   shuffled with a date-seeded PRNG (so a reload does not re-deal).
+   `spaceSiblings()` keeps one word family `CFG.SIBLING_GAP` apart.
+3. **Daily ring.** Home shows today, not lifetime — `overview()` returns
+   `answered / dayTarget`. A lifetime bar moves 0.3%/day and reinforces
+   nothing. Gold tick marks `CFG.MIN_DAY`.
+4. **Streak freezes.** `advanceStreak()` covers a missed day from a banked
+   freeze instead of resetting. One earned per `FREEZE_EVERY` clean days,
+   capped at `FREEZE_MAX`. `freezes` absent reads as 0 and behaves as before.
+5. **Pairing round** (`match`). Five words, five meanings, opening the session.
+   `commitAnswer()` was split into `gradeWord()` + cursor advance because a
+   round settles five words at once. **`match` must stay in `AUTO_MODES`** or a
+   face tap reveals the underlying card and the grade buttons hijack the round.
+6. **Gender shapes** (der ▲ die ● das ■) and **word families** on reveal,
+   indexed from a folded five-letter stem at load.
+
+### Not built yet
+
+`4.4` sentence cloze needs a Tatoeba-derived sentence bank — a new file keyed
+by existing word id, never an edit to `vocab.v1.json`. `4.5` per-word mnemonic
+(`st.n`) is unstarted. Both are specified in `docs/PHASE-4.md`.
+
+## Then: Phase 4 (original plan)
 
 Nothing is specified. Candidates: pulling B2-extended into scope once the core
 set is cleared, an adjective-declension drill, and a `vocab.v2.json` rebuild

@@ -34,15 +34,21 @@
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
          "Segoe UI Variable Display","Segoe UI",Roboto,system-ui,sans-serif;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}
 html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
 body{
+  /* dvh follows Safari's collapsing toolbar; the % is the fallback */
+  height:100%; height:100dvh;
   background:var(--bg); color:var(--ink);
   font:400 17px/1.45 var(--font); letter-spacing:-.015em;
-  -webkit-font-smoothing:antialiased;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  -webkit-user-select:none; user-select:none;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   display:flex; flex-direction:column;
 }
+/* typing is the one place selection and callouts must still work */
+input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 #app{flex:1;display:flex;flex-direction:column;min-height:0;position:relative;isolation:isolate}
 
 /* the one flourish: ambient light, tinted to the level of the current word */
@@ -147,8 +153,15 @@ button{font-family:inherit}
   transition:width .35s ease}
 .face{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;gap:16px;padding:28px 4px 44px;min-height:0;position:relative;
-  user-select:none;-webkit-user-select:none;cursor:pointer}
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
 .face.top{justify-content:flex-start;padding-top:56px;cursor:default}
+/* every new card arrives the same way — one short, calm move, no bounce */
+@keyframes cardin{
+  from{opacity:0;transform:translateY(10px) scale(.985)}
+  to{opacity:1;transform:none}
+}
+.face.enter{animation:cardin .26s cubic-bezier(.32,.72,0,1)}
+.pad.enter{animation:cardin .3s cubic-bezier(.32,.72,0,1) .04s backwards}
 .word{font-size:clamp(32px,9vw,48px);font-weight:700;letter-spacing:-.045em;line-height:1.06}
 .word small{display:block;font-size:12px;font-weight:600;color:var(--faint);
   margin-top:14px;text-transform:uppercase;letter-spacing:.09em}
@@ -187,7 +200,11 @@ button{font-family:inherit}
 .gmark{font-style:normal;opacity:.5;font-size:.6em;vertical-align:.25em;margin-right:.25em}
 
 /* ---------- pairing round ---------- */
-.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* the round is the content, so it takes the room the card face usually gets */
+.stage.matching .face{flex:0 0 auto;padding:16px 4px 4px;gap:6px}
+.stage.matching .face .word{font-size:clamp(24px,6.5vw,32px)}
+.stage.matching #st-matchpad{flex:1;display:flex;align-items:center;padding-top:8px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
 .mtile{min-height:56px;border:0;border-radius:14px;background:var(--glass);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   color:var(--ink);font:500 15px/1.2 var(--font);letter-spacing:-.02em;
