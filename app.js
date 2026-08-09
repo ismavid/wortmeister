@@ -718,12 +718,55 @@ function logAnswer(isNew, grade) {
   if (h.again === undefined) h.again = 0;   // records written before v1.2
   if (isNew) h.new++; else h.rev++;
   if (grade === G.AGAIN) h.again++;
-  if (A.set.lastDay !== d) {
-    const y = today(Date.now() - CFG.DAY);
-    A.set.streak = (A.set.lastDay === y) ? (A.set.streak + 1) : 1;
-    A.set.lastDay = d;
-  }
+  if (A.set.lastDay !== d) { advanceStreak(d); A.set.lastDay = d; }
   queueSettings();
+}
+
+/** Whole days between two local YYYY-MM-DD dates. */
+function daysBetween(a, b) {
+  const t = s => new Date(s + 'T12:00:00').getTime();   // midday dodges DST
+  return Math.round((t(b) - t(a)) / CFG.DAY);
+}
+
+/**
+ * Advance the streak onto day `d`.
+ *
+ * A missed day is covered by a banked freeze rather than resetting to 1.
+ * Losing a six-week streak to one late shift is how the habit dies, and the
+ * streak is only worth anything as a reason to come back tomorrow.
+ * `freezes` is absent on older settings, so it reads as 0 and behaves exactly
+ * as before until one is earned.
+ */
+function advanceStreak(d) {
+  const gap = A.set.lastDay ? daysBetween(A.set.lastDay, d) : 1;
+  let freezes = A.set.freezes || 0;
+
+  if (gap === 1) {
+    A.set.streak = (A.set.streak || 0) + 1;
+  } else if (gap > 1 && freezes >= gap - 1) {
+    freezes -= gap - 1;                       // spend one per missed day
+    A.set.streak = (A.set.streak || 0) + 1;
+    A.set.frozeOn = d;
+  } else {
+    A.set.streak = 1;
+  }
+
+  // earn one back for every clean week, capped so they cannot be hoarded
+  if (A.set.streak > 0 && A.set.streak % CFG.FREEZE_EVERY === 0) {
+    freezes = Math.min(CFG.FREEZE_MAX, freezes + 1);
+  }
+  A.set.freezes = freezes;
+}
+
+/** Answers per local day, oldest first, for the heatmap. */
+function heatSeries(days) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const key = today(Date.now() - i * CFG.DAY);
+    const h = A.set.history[key] || {};
+    out.push({ key, n: (h.new || 0) + (h.rev || 0) });
+  }
+  return out;
 }
 
 /* History and lastDay used to be keyed to UTC dates. Translate lastDay once so
@@ -841,23 +884,43 @@ function overview() {
   const remaining = remainingToLearn();
   const dte = daysToExam();
   const due = Math.min(dueList(Date.now()).length, A.set.maxReviews);
-  const doneToday = (A.set.history[today()] || {}).new || 0;
-  const newLeft = Math.max(0, autoNewTarget(remaining) - doneToday);
+  const h = A.set.history[today()] || {};
+  const newDone = h.new || 0;
+  const answered = (h.new || 0) + (h.rev || 0);
+  const newLeft = Math.max(0, autoNewTarget(remaining) - newDone);
+  const cards = due + newLeft;
   return {
     scoped: scoped.length, known, triaged, untriaged: scoped.length - triaged,
-    remaining, dte, due, newLeft, cards: due + newLeft,
-    need: Math.ceil(remaining / dte)
+    remaining, dte, due, newLeft, cards,
+    need: Math.ceil(remaining / dte),
+    // today's ring: what you have answered against everything still waiting.
+    // A lifetime bar moves 0.3% a day and reinforces nothing; this one finishes.
+    answered, dayTarget: answered + cards,
+    dayDone: cards === 0 && answered > 0,
+    minDay: answered >= CFG.MIN_DAY
   };
 }
 
 function renderHome() {
   setTint(null);
   const o = overview();
-  const pct = o.scoped ? o.known / o.scoped : 0;
-  $('#ringfill').setAttribute('stroke-dasharray', `${(pct * CIRC).toFixed(1)} ${CIRC}`);
-  $('#ringpct').textContent = Math.round(pct * 100) + '%';
-  $('#ringsub').textContent =
-    `${o.known.toLocaleString('en')} of ${o.scoped.toLocaleString('en')} words`;
+  const dayPct = o.dayTarget ? o.answered / o.dayTarget : 0;
+  const lifePct = o.scoped ? Math.round(o.known / o.scoped * 100) : 0;
+  $('#ringfill').setAttribute('stroke-dasharray', `${(dayPct * CIRC).toFixed(1)} ${CIRC}`);
+  $('#ringfill').setAttribute('stroke',
+    o.dayDone ? 'var(--green)' : 'var(--blue)');
+
+  // a tick at the minimum day, so a bad evening still has a visible target
+  const tickAt = o.dayTarget ? Math.min(1, CFG.MIN_DAY / o.dayTarget) : 0;
+  const tick = $('#ringtick');
+  tick.style.display = (o.dayDone || !o.dayTarget || tickAt >= 1) ? 'none' : '';
+  tick.setAttribute('stroke-dasharray', `2 ${CIRC}`);
+  tick.setAttribute('stroke-dashoffset', `${(-tickAt * CIRC).toFixed(1)}`);
+
+  $('#ringpct').textContent = o.dayDone ? '✓' : o.answered.toLocaleString('en');
+  $('#ringsub').textContent = o.dayDone
+    ? `done for today · ${lifePct}% of all words`
+    : `of ${o.dayTarget.toLocaleString('en')} today · ${lifePct}% overall`;
   $('#countdown').textContent = o.dte + ' days until the exam';
   renderCounters(o);
 
@@ -901,6 +964,9 @@ function renderCounters(o) {
   $('#s-triage').textContent = o.untriaged.toLocaleString('en');
   $('#s-streak').textContent =
     (A.set.streak || 0) + (A.set.streak === 1 ? ' day' : ' days');
+  const fz = A.set.freezes || 0;
+  $('#s-freeze').textContent = fz + (fz === 1 ? ' freeze' : ' freezes');
+  renderHeat();
   $('#s-need').textContent = o.need + (o.need === 1 ? ' word' : ' words');
   const avg = recentPace(7);
   $('#s-actual').textContent = avg + (avg === 1 ? ' word' : ' words');
@@ -923,6 +989,18 @@ function firstRunGuide() {
       <li>Sort the A1–B1 words before you start studying, or the queue fills up
         with words you already know.</li>
     </ol></div>`;
+}
+
+/** Twelve weeks of activity, four levels, today ringed. */
+function renderHeat() {
+  const el = $('#heat');
+  if (!el) return;
+  const series = heatSeries(84);
+  const t = today();
+  el.innerHTML = '<div class="heat">' + series.map(d => {
+    const lvl = d.n === 0 ? '' : d.n < 25 ? 'l1' : d.n < 75 ? 'l2' : d.n < 150 ? 'l3' : 'l4';
+    return `<i class="${lvl}${d.key === t ? ' today' : ''}" title="${d.key}: ${d.n}"></i>`;
+  }).join('') + '</div>';
 }
 
 /** Seven days of new words against the required daily pace. */
@@ -1017,7 +1095,7 @@ $$('[data-tg]').forEach(b => b.addEventListener('click', () => triage(b.dataset.
 /* ============================ study ============================ */
 const ST = {
   queue: [], i: 0, mode: 'de2en', t0: 0, revealed: false, done: 0,
-  elapsed: 0, again: new Map(),
+  elapsed: 0, again: new Map(), t0session: 0, wrong: 0,
   aux: null,        // auxiliary picked in the verb-form drill
   pat: null,        // rection pattern being asked
   prep: null        // preposition picked, before the case step
@@ -1026,6 +1104,7 @@ const AUTO_MODES = { type: true, article: true, verb: true, rection: true };
 
 function startStudy() {
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
+  ST.wrong = 0; ST.t0session = Date.now();
   if (!ST.queue.length) {
     $('#st-prompt').innerHTML =
       '<span style="font-size:20px;color:var(--green)">Nothing due today</span>';
@@ -1046,12 +1125,19 @@ function hidePads() {
 }
 function showCard() {
   if (ST.i >= ST.queue.length) {
+    const mins = Math.max(1, Math.round((Date.now() - ST.t0session) / CFG.MIN));
+    const acc = ST.done ? Math.round((ST.done - ST.wrong) / ST.done * 100) : 100;
     $('#st-prompt').innerHTML =
       `<span style="font-size:20px;color:var(--green)">Session complete</span>`;
     $('#st-answer').classList.add('hidden');
-    $('#st-gram').classList.add('hidden');
-    $('#st-hint').textContent =
-      ST.done + (ST.done === 1 ? ' card reviewed' : ' cards reviewed');
+    // end on what you achieved, not on a bare count
+    $('#st-gram').innerHTML =
+      `<b>${ST.done}</b> cards · <b>${acc}%</b> right · <b>${mins}</b> min`;
+    $('#st-gram').classList.remove('hidden');
+    const o = overview();
+    $('#st-hint').textContent = o.dayDone
+      ? 'That is everything due today'
+      : o.cards + ' still waiting today';
     hidePads();
     $('#st-donepad').classList.remove('hidden');
     $('#st-meter').style.width = '100%';
@@ -1164,6 +1250,7 @@ function commitAnswer(w, grade, elapsed) {
   pushTime(ST.mode, elapsed);
   st.t = Math.round(elapsed);
   st.m[ST.mode] = (st.m[ST.mode] || 0) + 1;
+  if (grade === G.AGAIN) ST.wrong++;
   applyGrade(st, grade, Date.now());
   setState(w.id, st);
   requeueIfSoon(w, st);
@@ -1663,6 +1750,7 @@ window.__wm = {
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
+  advanceStreak, daysBetween, heatSeries, renderHeat,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,
   hasVerbForms, auxFor, rectionFor, matchForm, matchVerbForm, vowelSwap,

@@ -394,6 +394,57 @@ function A_extendedSample(w){
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
 
+  // ------------------------------------------------------- streak + freezes
+  console.log('\n== streak and freezes ==');
+  const sBackup = { streak: M.A.set.streak, lastDay: M.A.set.lastDay, freezes: M.A.set.freezes };
+  const runStreak = (lastDay, streak, freezes, onDay) => {
+    M.A.set.lastDay = lastDay; M.A.set.streak = streak; M.A.set.freezes = freezes;
+    M.advanceStreak(onDay);
+    return { streak: M.A.set.streak, freezes: M.A.set.freezes };
+  };
+
+  ok('days between two local dates', M.daysBetween('2026-08-05', '2026-08-08') === 3);
+  ok('days between is zero for the same day', M.daysBetween('2026-08-05', '2026-08-05') === 0);
+  ok('days between crosses a month boundary', M.daysBetween('2026-07-31', '2026-08-01') === 1);
+
+  ok('a consecutive day extends the streak',
+    runStreak('2026-08-05', 4, 0, '2026-08-06').streak === 5);
+  ok('a missed day with no freeze resets to 1',
+    runStreak('2026-08-05', 30, 0, '2026-08-07').streak === 1);
+  ok('a missed day is covered by a banked freeze',
+    runStreak('2026-08-05', 30, 1, '2026-08-07').streak === 31);
+  ok('covering a day spends the freeze',
+    runStreak('2026-08-05', 30, 1, '2026-08-07').freezes === 0);
+  ok('two missed days need two freezes',
+    runStreak('2026-08-05', 30, 1, '2026-08-08').streak === 1);
+  ok('two freezes cover two missed days',
+    runStreak('2026-08-05', 30, 2, '2026-08-08').streak === 31);
+  ok('a freeze is earned every seventh day',
+    runStreak('2026-08-05', 6, 0, '2026-08-06').freezes === 1);
+  ok('freezes are capped', runStreak('2026-08-05', 13, 2, '2026-08-06').freezes === 2);
+  ok('a first-ever day starts the streak at 1',
+    runStreak(null, 0, 0, '2026-08-06').streak === 1);
+
+  // settings written before freezes existed must behave exactly as before
+  M.A.set.lastDay = '2026-08-05'; M.A.set.streak = 12; delete M.A.set.freezes;
+  M.advanceStreak('2026-08-07');
+  ok('a missing freezes field reads as zero and resets as it always did',
+    M.A.set.streak === 1, M.A.set.streak);
+  M.A.set.lastDay = '2026-08-05'; M.A.set.streak = 12; delete M.A.set.freezes;
+  M.advanceStreak('2026-08-06');
+  ok('a missing freezes field still extends normally', M.A.set.streak === 13);
+
+  Object.assign(M.A.set, sBackup);
+
+  ok('the heatmap spans the window it is asked for', M.heatSeries(84).length === 84);
+  ok('the heatmap counts both new and review answers', (() => {
+    const hb = M.A.set.history;
+    M.A.set.history = { [M.today()]: { new: 5, rev: 7 } };
+    const n = M.heatSeries(3).slice(-1)[0].n;
+    M.A.set.history = hb;
+    return n === 12;
+  })());
+
   // ------------------------------------------------------- answer checking
   console.log('\n== typed answers ==');
   ok('fold lowercases and collapses space', M.foldGerman('  Der   Betrieb ') === 'der betrieb',
