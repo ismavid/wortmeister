@@ -40,8 +40,13 @@ const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
 const MODE_LABEL = {
   de2en: 'German → English', en2de: 'English → German', type: 'Type it',
   article: 'Article', verb: 'Verb forms', rection: 'Preposition',
-  match: 'Match', cloze: 'In a sentence'
+  match: 'Match', cloze: 'In a sentence', hint: 'Fill it in'
 };
+/* How much of the word the "Fill it in" mode gives away, by level.
+   Level rises only when you answer correctly — getting it wrong should never
+   buy you less help — and drops back one on a miss. */
+const HINT_SHARE = [0.5, 0.25, 0];
+const HINT_MAX = HINT_SHARE.length - 1;
 /* Gender gets a constant shape because colour is already spoken for by the
    CEFR ambient. One silent, repeated cue across ~5,700 nouns. */
 const GENDER_SHAPE = { der: '▲', die: '●', das: '■' };
@@ -72,6 +77,26 @@ const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/**
+ * iOS does not reflow when the keyboard opens: the visual viewport shrinks but
+ * the layout viewport does not, so Safari scrolls the focused input into view
+ * and the prompt ends up above the fold. Track the visual viewport, size the
+ * app to it, and flag the compact type scale while it is short.
+ */
+function trackKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const apply = () => {
+    document.documentElement.style.setProperty('--vvh', vv.height + 'px');
+    // a keyboard eats far more than browser chrome ever does
+    document.body.classList.toggle('kb', vv.height < window.innerHeight - 120);
+    window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', apply);
+  vv.addEventListener('scroll', apply);
+  apply();
+}
+
 /** Restart the enter animation on an element that is already on screen.
     Reading offsetWidth forces the reflow that makes the replay take. */
 function replayEnter(el) {
@@ -636,6 +661,38 @@ function typeTarget(w) {
 }
 
 /**
+ * How much help this word still gets in "Fill it in".
+ *
+ * Stored in `st.h` once the mode has been answered. Records written before
+ * this mode existed have no `h`, so the level is *derived* from how often the
+ * word has been seen at all — a word you have answered eight times should not
+ * suddenly be spoon-fed. Deriving it means no migration and no rewrite.
+ */
+function hintLevel(st) {
+  if (!st) return 0;
+  if (st.h !== undefined) return Math.max(0, Math.min(HINT_MAX, st.h));
+  return Math.min(HINT_MAX, Math.floor((st.r || 0) / 4));
+}
+
+/**
+ * The masked target: the first letters of the lemma in place, everything else
+ * a dot. The article is never revealed — der/die/das are all three letters, so
+ * masking it shows the shape without leaking the gender, which the article
+ * drill is separately responsible for teaching.
+ */
+function hintMask(w, level) {
+  const target = typeTarget(w);
+  const lemmaAt = target.length - w.lemma.length;
+  const show = Math.ceil(w.lemma.length * HINT_SHARE[Math.min(level, HINT_MAX)]);
+  let out = '';
+  for (let i = 0; i < target.length; i++) {
+    if (target[i] === ' ') { out += ' '; continue; }
+    out += (i >= lemmaAt && i < lemmaAt + show) ? target[i] : '·';
+  }
+  return out;
+}
+
+/**
  * Grade a typed answer.
  * Returns { ok, near, expected } — `near` means it counted but only as Hard.
  *
@@ -803,7 +860,7 @@ function speechFor(w, mode) {
     // the answer here is the English gloss, so that is what gets read
     case 'de2en': return { text: w.en, lang: 'en-US' };
     case 'en2de': return { text: display(w), lang: 'de-DE' };
-    case 'type': return { text: typeTarget(w), lang: 'de-DE' };
+    case 'type': case 'hint': return { text: typeTarget(w), lang: 'de-DE' };
     case 'article': return { text: w.article + ' ' + w.lemma, lang: 'de-DE' };
     case 'verb': return { text: [w.lemma, w.prt, w.pp].filter(Boolean).join(', '), lang: 'de-DE' };
     default: return { text: w.lemma, lang: 'de-DE' };
@@ -894,9 +951,10 @@ function buildSession() {
 /**
  * How a word should be asked, by how many times it has been answered.
  * Recognition first, then recall, then production:
- *   reps 0–1  flip DE→EN
- *   reps 2–4  flip EN→DE
- *   reps 5+   type the German
+ *   reps 0–1  flip DE→EN (recognition)
+ *   reps 2–4  fill it in — typing with fading hints, replacing the old EN→DE
+ *             flip card, because producing the word beats recognising it
+ *   reps 5+   production, weighted towards filling it in
  *
  * Specialist drills take every third slot rather than replacing the
  * progression: nouns from rep 2 (gender), verbs from rep 3 (forms, and the
@@ -918,11 +976,15 @@ function pickMode(w) {
   }
 
   if (reps < 2) return 'de2en';
-  if (reps < 5) return 'en2de';
-  // production alternates between writing the word cold and choosing it in
-  // context; cloze only when this word actually has a sentence
-  if (reps % 2 === 1 && sentencesFor(w)) return 'cloze';
-  return 'type';
+  if (reps < 5) return 'hint';
+
+  // Production rotation. "Fill it in" takes half the slots because writing the
+  // word from a shrinking scaffold is the thing that actually sticks; typing
+  // cold and picking it in context share the rest.
+  const k = reps % 4;
+  if (k === 0 || k === 2) return 'hint';
+  if (k === 1) return 'type';
+  return sentencesFor(w) ? 'cloze' : 'type';
 }
 
 /* ============================ history / streak ============================ */
@@ -1319,7 +1381,10 @@ const ST = {
 /* Modes that grade themselves and have no reveal step. `match` must be here or
    a tap on the card face during a pairing round reveals the underlying card
    and lets the grade buttons hijack the round. */
-const AUTO_MODES = { type: true, article: true, verb: true, rection: true, match: true };
+const AUTO_MODES = {
+  type: true, article: true, verb: true, rection: true, match: true,
+  cloze: true, hint: true
+};
 /** Pairing-round state. Separate from ST because a round spans five cards. */
 const MT = { words: null, miss: null, pairedIds: null, sel: null, t0: 0 };
 
@@ -1505,11 +1570,28 @@ function showCard() {
   $('#st-mode').textContent = MODE_LABEL[ST.mode];
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
+  $('#st-mask').classList.add('hidden');
   $('#st-gram').innerHTML = grammar(w);
   $('#st-face').classList.toggle('top', !!AUTO_MODES[ST.mode]);
   hidePads();
 
-  if (ST.mode === 'type') {
+  if (ST.mode === 'hint') {
+    const lvl = hintLevel(getState(w.id));
+    ST.hintLvl = lvl;
+    $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-mask').innerHTML = hintMask(w, lvl)
+      .replace(/·/g, '<i>·</i>').replace(/ /g, '&nbsp;');
+    $('#st-mask').classList.remove('hidden');
+    $('#st-answer').innerHTML = displayMarked(w);
+    $('#st-hint').textContent = lvl >= HINT_MAX
+      ? (isDrillableNoun(w) ? 'No help left — include the article' : 'No help left')
+      : (isDrillableNoun(w) ? 'Include the article' : 'Fill in the rest');
+    const inp = $('#st-input');
+    inp.value = ''; inp.disabled = false;
+    $('#st-check').disabled = true;
+    $('#st-typepad').classList.remove('hidden');
+    inp.focus();
+  } else if (ST.mode === 'type') {
     $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = isDrillableNoun(w)
@@ -1665,13 +1747,14 @@ function showResult(ok, title, detail) {
 
 function submitTyped() {
   const w = ST.queue[ST.i];
-  if (!w || ST.revealed || ST.mode !== 'type') return;
+  if (!w || ST.revealed || (ST.mode !== 'type' && ST.mode !== 'hint')) return;
   const inp = $('#st-input');
   const raw = inp.value;
   if (!raw.trim()) return;
   ST.revealed = true;
   ST.elapsed = performance.now() - ST.t0;
   inp.disabled = true;
+  inp.blur();                 // drop the keyboard so the result is fully visible
   $('#st-typepad').classList.add('hidden');
 
   const res = checkTyped(w, raw);
@@ -1694,6 +1777,19 @@ function submitTyped() {
     showResult(true, 'Correct', '');
   }
   commitAnswer(w, grade, ST.elapsed);
+
+  // The scaffold shrinks only when you got it right, and grows back one step
+  // when you did not — failing should never cost you help.
+  if (ST.mode === 'hint') {
+    const st = getState(w.id);
+    if (st) {
+      const cur = ST.hintLvl;
+      st.h = res.ok && !res.near ? Math.min(HINT_MAX, cur + 1)
+        : res.ok ? cur
+          : Math.max(0, cur - 1);
+      setState(w.id, st);
+    }
+  }
   $('#st-result').classList.remove('hidden');
 }
 
@@ -1727,6 +1823,7 @@ function submitVerb() {
   ST.elapsed = performance.now() - ST.t0;
   $('#st-vprt').disabled = true;
   $('#st-vpp').disabled = true;
+  $('#st-vpp').blur();
   $('#st-verbpad').classList.add('hidden');
 
   const res = checkVerbForms(w, prt, pp, ST.aux);
@@ -2137,6 +2234,7 @@ async function boot() {
     await loadVocab();
     A.state = await DB.all('state');
     buildNav();
+    trackKeyboard();
     if (navigator.storage && navigator.storage.persist) {
       navigator.storage.persist().catch(() => {});
     }
@@ -2176,6 +2274,7 @@ window.__wm = {
   genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
   speechAvailable, speechFor, speakCard, say, stopSpeech, pickVoice, SPEECH,
   sentencesFor, clozeChoices, clozePrompt, clozeFilled, loadSentences, indexPos,
+  hintLevel, hintMask, HINT_SHARE, HINT_MAX, trackKeyboard,
   setAmbientLive,
   today, pickMode, foldGerman, levenshtein, typeTarget, checkTyped,
   isDrillableNoun, recentPace, paceSeries,

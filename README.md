@@ -61,12 +61,21 @@ production as you answer it:
 |---|---|---|---|
 | opening | Match | five words, five meanings | tap a word, then its meaning |
 | 0–1 | German → English | `der Betrieb, Betriebe` | tap to flip, then rate |
-| 2–4 | English → German | `business, operation` | tap to flip, then rate |
-| 5+ even | Type it | `to develop` | type the German |
-| 5+ odd | In a sentence | `_____ Mensch ist sterblich.` | pick the word that fits |
+| 2–4 | **Fill it in** | `nothing` + `nic···` | type the German, with a shrinking scaffold |
+| 5+ | **Fill it in** (half the slots) | `nothing` + `······` | type it with no help left |
+| 5+ | Type it | `to develop` | type the German, no scaffold |
+| 5+ | In a sentence | `_____ Mensch ist sterblich.` | pick the word that fits |
 | from 2 | Article | `Bewerbung` | tap der / die / das |
 | from 3 | Verb forms | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
 | from 3 | Preposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
+
+**Fill it in** replaced the old English→German flip card, and is the mode you
+get most: producing the word beats recognising it. The first time you meet it
+you get about half the letters, in place; the next time about a quarter; after
+that a row of dots. The scaffold shrinks **only when you answer correctly**,
+and grows back a step when you miss — getting it wrong should never cost you
+help. Nouns still need their article, and the article is never part of the
+scaffold, so gender is never given away.
 
 Specialist drills take every third slot rather than replacing the progression:
 nouns from rep 2 (gender), verbs from rep 3 (forms, and the governed
@@ -212,7 +221,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-367 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+402 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

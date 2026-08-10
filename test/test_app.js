@@ -452,6 +452,45 @@ function A_extendedSample(w){
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
 
+  // ------------------------------------------------------- fill it in
+  console.log('\n== fill it in (fading hints) ==');
+  const HW = { pos: 'verb', lemma: 'entwickeln', article: '', en: 'to develop' };
+  const HN = { pos: 'noun', lemma: 'Bewerbung', article: 'die', plural: 'Bewerbungen', en: 'application' };
+
+  ok('a brand new word gets the most help', M.hintLevel({ r: 0 }) === 0);
+  ok('no record at all gets the most help', M.hintLevel(null) === 0);
+  ok('a stored level is used once it exists', M.hintLevel({ r: 0, h: 2 }) === 2);
+  ok('the level is clamped to the top', M.hintLevel({ r: 0, h: 99 }) === M.HINT_MAX);
+  ok('a negative level is clamped up', M.hintLevel({ r: 0, h: -3 }) === 0);
+  // records written before this mode existed must not be spoon-fed
+  ok('an old well-drilled record starts with less help',
+    M.hintLevel({ r: 8 }) === M.HINT_MAX, M.hintLevel({ r: 8 }));
+  ok('an old lightly-seen record still gets help', M.hintLevel({ r: 2 }) === 0);
+
+  const m0 = M.hintMask(HW, 0), m1 = M.hintMask(HW, 1), m2 = M.hintMask(HW, 2);
+  ok('the mask is as long as the word', m0.length === 'entwickeln'.length, m0);
+  ok('level 0 reveals a prefix in order', m0.startsWith('entwi'), m0);
+  ok('level 1 reveals fewer letters',
+    (m1.match(/[a-zä-ü]/g) || []).length < (m0.match(/[a-zä-ü]/g) || []).length,
+    m0 + ' -> ' + m1);
+  ok('level 2 reveals nothing', !/[a-zA-ZäöüÄÖÜß]/.test(m2), m2);
+  ok('every hidden letter is a dot', /^[·]+$/.test(m2), m2);
+  ok('the revealed letters are the real ones',
+    m0.replace(/·/g, '') === 'entwickeln'.slice(0, m0.replace(/·/g, '').length));
+
+  const n0 = M.hintMask(HN, 0);
+  ok('a noun mask keeps the article space', n0.includes(' '), n0);
+  ok('the article is never revealed', !/^d/i.test(n0), n0);
+  ok('the article is masked at full length',
+    n0.split(' ')[0] === '···', n0.split(' ')[0]);
+  ok('the noun body is still hinted', /[a-zA-ZäöüÄÖÜß]/.test(n0.split(' ')[1]), n0);
+  ok('a noun at full fade shows nothing',
+    !/[a-zA-ZäöüÄÖÜß]/.test(M.hintMask(HN, 2)), M.hintMask(HN, 2));
+
+  // grading reuses the typing checker, so the article is still required
+  ok('the answer still needs the article', !M.checkTyped(HN, 'Bewerbung').ok);
+  ok('the full answer passes', M.checkTyped(HN, 'die Bewerbung').ok);
+
   // ------------------------------------------------------- sentence bank
   console.log('\n== cloze ==');
   const sentPath = path.join(APP, 'data/sentences.v1.json');
@@ -693,11 +732,11 @@ function A_extendedSample(w){
 
   ok('reps 0 is flip DE→EN', modeAt(plainWord, 0) === 'de2en', modeAt(plainWord, 0));
   ok('reps 1 is flip DE→EN', modeAt(plainWord, 1) === 'de2en');
-  ok('reps 2 is flip EN→DE', modeAt(plainWord, 2) === 'en2de', modeAt(plainWord, 2));
-  ok('reps 4 is flip EN→DE', modeAt(plainWord, 4) === 'en2de');
+  ok('reps 2 switches to filling it in', modeAt(plainWord, 2) === 'hint', modeAt(plainWord, 2));
+  ok('reps 4 still fills it in', modeAt(plainWord, 4) === 'hint');
   ok('reps 5 is typing', modeAt(plainWord, 5) === 'type', modeAt(plainWord, 5));
   ok('reps 9 is still typing', modeAt(plainWord, 9) === 'type');
-  ok('a verb keeps the base progression at reps 4', modeAt(verbForms, 4) === 'en2de');
+  ok('a verb keeps the base progression at reps 4', modeAt(verbForms, 4) === 'hint');
   ok('a verb keeps the base progression at reps 5', modeAt(verbForms, 5) === 'type');
   ok('a verb takes the form drill at reps 3', modeAt(verbForms, 3) === 'verb',
     modeAt(verbForms, 3));
@@ -711,9 +750,9 @@ function A_extendedSample(w){
   ok('a noun starts on flip too', modeAt(nounWord, 0) === 'de2en');
   ok('a noun interleaves the article drill from rep 2',
     modeAt(nounWord, 2) === 'article', modeAt(nounWord, 2));
-  ok('the noun returns to flip at rep 3', modeAt(nounWord, 3) === 'en2de');
+  ok('the noun returns to filling it in at rep 3', modeAt(nounWord, 3) === 'hint');
   ok('the article drill returns every third rep', modeAt(nounWord, 5) === 'article');
-  ok('the noun still reaches typing', modeAt(nounWord, 6) === 'type', modeAt(nounWord, 6));
+  ok('the noun still reaches plain typing', modeAt(nounWord, 9) === 'type', modeAt(nounWord, 9));
   ok('an article-less noun is never article-drilled',
     !M.isDrillableNoun({ pos: 'noun', lemma: 'Leute', article: '' }));
 
@@ -1024,6 +1063,62 @@ function A_extendedSample(w){
   } else {
     ok('the right preposition with the wrong case grades Hard', true, 'skipped: caseless pattern');
   }
+
+  // -------------------------------------------------- fill it in, via DOM
+  console.log('\n== fill it in (DOM) ==');
+  const letters = s => (s.match(/[a-zA-ZäöüÄÖÜß]/g) || []).length;
+
+  await openStudy(plainWord, 2);
+  ok('rep 2 opens the fill-in card', el('st-mode').textContent === 'Fill it in',
+    el('st-mode').textContent);
+  ok('the scaffold is shown', !el('st-mask').classList.contains('hidden'));
+  ok('the prompt is the English gloss', el('st-prompt').textContent.includes(plainWord.en));
+  ok('the typing pad is reused', !el('st-typepad').classList.contains('hidden'));
+  const shown0 = letters(el('st-mask').textContent);
+  ok('some letters are given away at first', shown0 > 0, shown0 + ' letters');
+  ok('not the whole word', shown0 < plainWord.lemma.length, shown0);
+
+  // answer it right -> less help next time
+  setInput(plainWord.lemma);
+  click('#st-check'); await sleep(30);
+  ok('a correct fill-in shows the positive banner',
+    el('st-result').className.includes('good'));
+  let hs = M.A.state.get(plainWord.id);
+  ok('a correct answer raises the level', hs.h === 1, JSON.stringify(hs.h));
+  ok('it counts a hint rep', hs.m.hint === 1, JSON.stringify(hs.m));
+
+  await openStudy(plainWord, 2);
+  M.A.state.get(plainWord.id).h = 1;
+  click('[data-go="home"]'); await sleep(20);
+  click('[data-go="study"]'); await sleep(50);
+  const shown1 = letters(el('st-mask').textContent);
+  ok('the second showing gives fewer letters', shown1 < shown0, shown0 + ' -> ' + shown1);
+
+  M.A.state.get(plainWord.id).h = 2;
+  click('[data-go="home"]'); await sleep(20);
+  click('[data-go="study"]'); await sleep(50);
+  ok('the third showing is a blank', letters(el('st-mask').textContent) === 0,
+    el('st-mask').textContent);
+  ok('the hint line says the help is gone',
+    /No help left/.test(el('st-hint').textContent), el('st-hint').textContent);
+
+  // getting it wrong must not cost you help
+  setInput('zzzfalsch');
+  click('#st-check'); await sleep(30);
+  hs = M.A.state.get(plainWord.id);
+  ok('a wrong answer gives help back rather than taking it', hs.h === 1, hs.h);
+  ok('a wrong fill-in still grades Again', hs.l === 1 || hs.s === 'relearning',
+    hs.s + ' lapses ' + hs.l);
+
+  // a near miss holds the level rather than advancing it
+  M.A.state.get(plainWord.id).h = 1;
+  M.A.state.get(plainWord.id).l = 0;
+  click('[data-go="home"]'); await sleep(20);
+  click('[data-go="study"]'); await sleep(50);
+  setInput(plainWord.lemma.slice(0, -1));
+  click('#st-check'); await sleep(30);
+  ok('a near miss holds the level steady', M.A.state.get(plainWord.id).h === 1,
+    M.A.state.get(plainWord.id).h);
 
   // ------------------------------------------------------- session re-entry
   console.log('\n== session re-entry cap ==');

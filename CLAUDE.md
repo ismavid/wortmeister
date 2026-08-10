@@ -66,7 +66,7 @@ sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
-test/test_app.js        367 assertions, jsdom + fake-indexeddb
+test/test_app.js        402 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -137,7 +137,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 367 passed, then 22 passed
+cd test && npm install && npm test     # expect: 402 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
@@ -254,6 +254,30 @@ progress, and no backup restore may be needed.
    - plus: the target must appear exactly once, be the only word above its own
      level (i+1), and the sentence must be 4–12 words with a translation
    - **CC BY 2.0 FR requires attribution** — it is in Settings and the README.
+
+8. **Fill it in** (`hint`). Typing with a fading scaffold, prompted by the
+   English gloss. **It replaced `en2de`** at reps 2–4 and takes half the
+   production slots above rep 5 (`reps % 4` is 0 or 2), because producing the
+   word beats recognising it. `en2de` stays in `MODE_LABEL` so existing
+   `st.m.en2de` counts still render under Stats — do not delete it.
+
+   - `hintLevel(st)` reads `st.h`, a NEW additive field. Records written before
+     this mode have no `h`, so the level is **derived** from `st.r` instead — a
+     word answered eight times is not suddenly spoon-fed. Derived at read time,
+     so nothing is migrated or rewritten.
+   - The level rises only on a fully correct answer, holds on a near miss, and
+     drops one on a miss. Failing must never buy you less help.
+   - `hintMask()` never reveals the article: der/die/das are all three letters,
+     so masking it shows the shape without leaking the gender that the article
+     drill is separately responsible for.
+   - Grading reuses `checkTyped()`, so the article is still required.
+
+9. **Keyboard-safe layout.** iOS shrinks the *visual* viewport when the
+   keyboard opens but not the layout viewport, so Safari scrolls the input into
+   view and pushes the prompt off the top. `trackKeyboard()` tracks
+   `visualViewport`, drives `--vvh`, and sets `body.kb`, which compacts the
+   type scale and moves the question to the top. Verified at 440pt — the height
+   an iPhone 17 keyboard leaves — that nothing is clipped in any typing mode.
 
 ### Not built yet
 
