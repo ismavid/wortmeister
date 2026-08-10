@@ -64,6 +64,23 @@ function A_extendedSample(w){
     prio.every((p, i) => i === 0 || p <= prio[i - 1] + 1e-9));
   ok('verbPrep present', data.verbPrep.length > 100, data.verbPrep.length);
 
+  // ---------------------------------------------------------- css tokens
+  console.log('\n== css custom properties ==');
+  {
+    // An undefined var() inside a gradient invalidates the whole declaration
+    // silently — no console error, the element just renders transparent. That
+    // is exactly how the milestone bar shipped empty once.
+    const css = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
+    const declared = new Set();
+    for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:/gi)) declared.add(m[1]);
+    const used = new Set();
+    for (const m of css.matchAll(/var\(\s*(--[a-z0-9-]+)/gi)) used.add(m[1]);
+    const missing = [...used].filter(v => !declared.has(v));
+    ok('every var() used in the stylesheet is defined',
+      missing.length === 0, missing.join(', '));
+    ok('the stylesheet declares tokens at all', declared.size > 10, declared.size);
+  }
+
   // ---------------------------------------------------------- boot in jsdom
   console.log('\n== boot ==');
   const html = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
@@ -451,6 +468,69 @@ function A_extendedSample(w){
   ok('pace over two days averages both', M.recentPace(7) === 15, M.recentPace(7));
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
+
+  // ------------------------------------------------------- milestone bar
+  console.log('\n== milestone estimate ==');
+  const msBackup = new Map(M.A.state);
+  const scopedIds = M.A.words.filter(x => M.inScope(x)).map(x => x.id);
+  const totalScoped = scopedIds.length;
+  const rec2 = o => Object.assign(
+    { s: 'review', e: 2.5, i: 1, d: 0, r: 3, l: 0, p: -1, m: {}, t: 0 }, o);
+  const setup = fn => { M.A.state.clear(); M.A.dirty.clear(); fn(); return M.milestone(); };
+
+  let ms = setup(() => {});
+  ok('with nothing sorted the target is the whole scope',
+    ms.target === totalScoped, ms.target + ' vs ' + totalScoped);
+  ok('with nothing sorted nothing is learned', ms.learned === 0 && ms.pct === 0);
+  ok('an untouched pile is flagged as an estimate', ms.estimated === true);
+  ok('there is no known-rate to report yet', ms.knewRate === null);
+
+  // sort 1000: 400 already known, 600 to learn -> 40% known rate
+  ms = setup(() => {
+    for (let i = 0; i < 400; i++) M.A.state.set(scopedIds[i], rec2({ s: 'known', r: 0, i: 0 }));
+    for (let i = 400; i < 1000; i++) M.A.state.set(scopedIds[i], rec2({ s: 'queued', r: 0, i: 0 }));
+  });
+  ok('words retired at sort time are counted as already known',
+    ms.alreadyKnew === 400, ms.alreadyKnew);
+  ok('the known-rate comes from what you sorted',
+    Math.abs(ms.knewRate - 0.4) < 1e-9, ms.knewRate);
+  ok('the unsorted pile is projected at the same rate', (() => {
+    const unsorted = totalScoped - 1000;
+    return ms.target === 600 + Math.round(unsorted * 0.6);
+  })(), 'target ' + ms.target);
+  ok('the target is well below the raw scope', ms.target < totalScoped, ms.target);
+  ok('nothing is learned yet', ms.learned === 0 && ms.pct === 0);
+
+  // now learn some of them
+  ms = setup(() => {
+    for (let i = 0; i < 400; i++) M.A.state.set(scopedIds[i], rec2({ s: 'known', r: 0, i: 0 }));
+    for (let i = 400; i < 1000; i++) M.A.state.set(scopedIds[i], rec2({ s: 'queued', r: 0, i: 0 }));
+    // 150 studied to mastery, 50 retired after study
+    for (let i = 400; i < 550; i++) M.A.state.set(scopedIds[i], rec2({ s: 'review', i: 30, r: 6 }));
+    for (let i = 550; i < 600; i++) M.A.state.set(scopedIds[i], rec2({ s: 'known', r: 4, i: 0 }));
+  });
+  ok('a mature review counts as learned', ms.learned === 200, ms.learned);
+  ok('a word retired after study counts as learned, not as already known',
+    ms.alreadyKnew === 400, ms.alreadyKnew);
+  ok('progress is learned over the estimated target',
+    Math.abs(ms.pct - ms.learned / ms.target) < 1e-9, ms.pct);
+  ok('progress is a sane fraction', ms.pct > 0 && ms.pct < 1, ms.pct);
+
+  // everything sorted -> no estimate left
+  ms = setup(() => {
+    for (let i = 0; i < totalScoped; i++) {
+      M.A.state.set(scopedIds[i], i < 3000 ? rec2({ s: 'known', r: 0, i: 0 })
+        : rec2({ s: 'review', i: 30, r: 6 }));
+    }
+  });
+  ok('a fully sorted pile is no longer an estimate', ms.estimated === false);
+  ok('a fully sorted pile targets exactly what is left',
+    ms.target === totalScoped - 3000, ms.target);
+  ok('finishing everything reads as complete', ms.pct === 1, ms.pct);
+  ok('progress never exceeds the target', ms.pct <= 1);
+
+  M.A.state.clear();
+  for (const [k, v] of msBackup) M.A.state.set(k, v);
 
   // ------------------------------------------------------- fill it in
   console.log('\n== fill it in (fading hints) ==');

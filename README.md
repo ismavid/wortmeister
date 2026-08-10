@@ -111,6 +111,24 @@ probably right.
 
 ---
 
+## How much is left
+
+The bar under the ring is the long arc: **words learned against how many you
+will actually have to learn** — which is not the whole 7,035.
+
+The unsorted pile is projected from your own sorting. If 65% of the words you
+have sorted so far turned out to be ones you already knew, roughly 65% of the
+rest should be too, so those are subtracted from the target. The figure carries
+a `~` until the pile is empty, and sharpens every time you sort more. Stats
+shows the basis: the share you already knew, the estimated target, and how many
+of them you have learned.
+
+A word counts as *learned* when you have studied it to a 21-day interval, or
+retired it after studying. A word you simply marked as known at sort time was
+never yours to learn, so it counts towards neither side.
+
+---
+
 ## Coming back tomorrow
 
 The ring on Home measures **today**, not your lifetime — a lifetime bar sits at
@@ -221,7 +239,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-402 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+421 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

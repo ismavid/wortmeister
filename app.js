@@ -1179,6 +1179,65 @@ function overview() {
   };
 }
 
+/**
+ * The long arc: how many words you have actually learned, against an estimate
+ * of how many you will have to.
+ *
+ * The unsorted pile is projected from your own sorting so far. If 38% of the
+ * words you have sorted turned out to be ones you already knew, roughly 38% of
+ * the rest should be too — so the target is not the whole 7,035, it is what is
+ * genuinely left for you specifically. The estimate sharpens every time you
+ * sort more, and is labelled with a ~ until the pile is empty.
+ *
+ * Derived from existing records only. Nothing new is stored.
+ */
+function milestone() {
+  const scoped = A.words.filter(inScope);
+  let sorted = 0, alreadyKnew = 0, learned = 0;
+  for (const w of scoped) {
+    const st = A.state.get(w.id);
+    if (!st) continue;
+    sorted++;
+    // retired at sort time without ever being studied — you already knew it
+    if (st.s === 'known' && !st.r) { alreadyKnew++; continue; }
+    if (st.s === 'known' || (st.s === 'review' && st.i >= 21)) learned++;
+  }
+  const unsorted = scoped.length - sorted;
+  const toLearnSorted = sorted - alreadyKnew;
+  // with nothing sorted there is no rate to project, so assume the worst
+  const needRate = sorted ? toLearnSorted / sorted : 1;
+  const estUnsorted = Math.round(unsorted * needRate);
+  const target = toLearnSorted + estUnsorted;
+  return {
+    scoped: scoped.length, sorted, alreadyKnew, learned, unsorted,
+    target, estimated: unsorted > 0,
+    knewRate: sorted ? alreadyKnew / sorted : null,
+    pct: target ? Math.min(1, learned / target) : 0
+  };
+}
+
+/** The bar itself. Catchy is fine; misleading is not, hence the ~. */
+function renderMilestone() {
+  const el = $('#milestone');
+  if (!el) return;
+  const m = milestone();
+  const pct = (m.pct * 100).toFixed(1);
+  const left = Math.max(0, m.target - m.learned);
+  // The width is set to its true value immediately and the growth is a
+  // transform animation on top. Animating the width itself would mean the bar
+  // reads zero until the transition finishes — wrong under reduced motion, in
+  // a screenshot, or if the render is interrupted.
+  el.innerHTML = `
+    <div class="mbar">
+      <i class="${m.pct >= 1 ? 'done' : ''}" style="width:${Math.max(pct, m.learned ? 1.5 : 0)}%"></i>
+      <div class="mticks">${'<span></span>'.repeat(10)}</div>
+    </div>
+    <div class="mlabel">
+      <span><b>${m.learned.toLocaleString('en')}</b> learned</span>
+      <span>${left.toLocaleString('en')} to go${m.estimated ? ' (est.)' : ''}</span>
+    </div>`;
+}
+
 function renderHome() {
   setTint(null);
   const o = overview();
@@ -1196,10 +1255,12 @@ function renderHome() {
   tick.setAttribute('stroke-dashoffset', `${(-tickAt * CIRC).toFixed(1)}`);
 
   $('#ringpct').textContent = o.dayDone ? '✓' : o.answered.toLocaleString('en');
+  // the overall figure lives in the milestone bar now, so the ring is just today
   $('#ringsub').textContent = o.dayDone
-    ? `done for today · ${lifePct}% of all words`
-    : `of ${o.dayTarget.toLocaleString('en')} today · ${lifePct}% overall`;
+    ? 'done for today'
+    : `of ${o.dayTarget.toLocaleString('en')} today`;
   $('#countdown').textContent = o.dte + ' days until the exam';
+  renderMilestone();
   renderCounters(o);
 
   const bits = [];
@@ -2056,6 +2117,7 @@ function renderStats() {
 
   const secs = m => (medianFor(m) / 1000).toFixed(1) + ' s';
 
+  const ms = milestone();
   const ret = retention(30);
   const left = remainingToLearn();
   const proj = projectedDays();
@@ -2087,6 +2149,12 @@ function renderStats() {
     <div class="card">
       <div class="stat"><span>Answers you got right (30 days)</span><b>${
         ret == null ? '–' : Math.round(ret * 100) + '%'}</b></div>
+      <div class="stat"><span>You already knew, of what you sorted</span><b>${
+        ms.knewRate == null ? '–' : Math.round(ms.knewRate * 100) + '%'}</b></div>
+      <div class="stat"><span>Words you will need to learn</span><b>${
+        ms.estimated ? '~' : ''}${ms.target.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Learned so far</span><b>${
+        ms.learned.toLocaleString('en')}</b></div>
       <div class="stat"><span>Words left to learn</span><b>${left.toLocaleString('en')}</b></div>
       <div class="stat"><span>Finished by</span><b style="color:${projColor}">${projLabel}</b></div>
       <div class="stat"><span>Exam</span><b>${examLabel}</b></div>
@@ -2268,7 +2336,7 @@ window.__wm = {
   CFG, G, A, ST, applyGrade, adjustGrade, clampEase, newState, previewIntervals,
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
-  overview, nextAction, renderCounters, MODE_LABEL,
+  overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   advanceStreak, daysBetween, heatSeries, renderHeat,
   genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
