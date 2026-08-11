@@ -95,7 +95,11 @@ input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 h1{font-size:21px;margin:0;font-weight:600;letter-spacing:-.03em}
 h2{font-size:14px;margin:34px 0 4px;color:var(--faint);font-weight:500;letter-spacing:-.01em}
 p{margin:0 0 12px;color:var(--dim);font-size:15px}
+/* tracking is size-specific: large type tightens, small type opens back up to
+   0 or slightly positive. A single letter-spacing is wrong somewhere. */
 .sub{color:var(--faint);font-size:13px;margin:0}
+.sub,.mlabel,.chartx span,.nav button,.gbtn small,.stat span,.wrow span,.empty,label
+  {letter-spacing:0}
 
 /* ---------- bars ---------- */
 .bar{display:flex;align-items:center;gap:14px;padding:12px 20px 6px;flex:0 0 auto}
@@ -117,8 +121,9 @@ button{font-family:inherit}
 .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;
   border:0;border-radius:14px;padding:0 20px;cursor:pointer;
   background:var(--blue);color:#fff;font:500 17px/1 var(--font);letter-spacing:-.02em;
-  transition:opacity .15s ease}
-.btn:active{opacity:.72}
+  transition:opacity .2s ease,transform .2s ease}
+/* feedback lands on pointer-down with no ramp; only the release is eased */
+.btn:active{opacity:.7;transform:scale(.985);transition-duration:0s}
 .btn[disabled]{background:var(--glass);color:var(--faint);cursor:default}
 .btn.ghost{background:var(--glass);backdrop-filter:var(--blur);
   -webkit-backdrop-filter:var(--blur);color:var(--ink)}
@@ -157,19 +162,31 @@ button{font-family:inherit}
 .milestone{margin:0 0 26px}
 .mbar{position:relative;height:12px;border-radius:99px;overflow:hidden;
   background:rgba(255,255,255,.08)}
-.mbar i{display:block;height:100%;border-radius:99px;position:relative;
-  background:linear-gradient(90deg,var(--blue),var(--blue-lt));
+/* two bands: what you have mastered, over what you have started. Reaching
+   mastery takes about a month per word, so without the softer band the bar
+   would read empty while you were plainly getting somewhere. */
+.mbar i{position:absolute;left:0;top:0;height:100%;border-radius:99px;
   transform-origin:left center;animation:grow .9s cubic-bezier(.32,.72,0,1)}
 @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.mbar i.mlearning{background:rgba(10,132,255,.34)}
+.mbar i.mmastered{background:linear-gradient(90deg,var(--blue),var(--blue-lt))}
 .mbar i.done{background:var(--green)}
 /* one sheen on arrival, not a loop — a loop would nag */
-.mbar i::after{content:"";position:absolute;inset:0;border-radius:99px;
+.mbar i.mmastered::after{content:"";position:absolute;inset:0;border-radius:99px;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);
   transform:translateX(-100%);animation:sheen 1.5s ease-in-out .9s 1}
 @keyframes sheen{to{transform:translateX(120%)}}
 .mticks{position:absolute;inset:0;display:flex;pointer-events:none}
 .mticks span{flex:1;border-right:1px solid rgba(0,0,0,.55)}
 .mticks span:last-child{border-right:0}
+/* the week sits above the long arc: same family, deliberately lighter, so the
+   three horizons read as today / this week / overall rather than competing */
+.wbar{position:relative;height:6px;border-radius:99px;overflow:hidden;
+  background:rgba(255,255,255,.07)}
+.wbar i{display:block;height:100%;border-radius:99px;background:var(--blue-lt);
+  transform-origin:left center;animation:grow .9s cubic-bezier(.32,.72,0,1)}
+.wbar i.done{background:var(--green)}
+.wlabel{margin-bottom:16px}
 .mlabel{display:flex;justify-content:space-between;gap:12px;margin-top:9px;
   font-size:13px;color:var(--faint)}
 .mlabel b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
@@ -211,6 +228,14 @@ button{font-family:inherit}
    top: centre it, then bias upward with bottom padding, so it holds its
    position on any screen height instead of leaving a void on a tall one. */
 .face.top{justify-content:center;padding:24px 4px 22%;cursor:default}
+/* the sorting card is dragged, so it must not fight the browser for the axis */
+#tg-face{touch-action:pan-y;will-change:transform}
+/* the outcome, shown while you are still deciding */
+.swipetag{position:absolute;top:6px;font-size:13px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;padding:7px 13px;border-radius:99px;opacity:0;
+  pointer-events:none;border:1.5px solid currentColor}
+.swipetag.yes{right:0;color:var(--green)}
+.swipetag.no{left:0;color:var(--red)}
 /* every new card arrives the same way — one short, calm move, no bounce */
 @keyframes cardin{
   from{opacity:0;transform:translateY(10px) scale(.985)}
@@ -263,8 +288,8 @@ body.kb .typein.sm{min-height:44px}
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   color:var(--ink);font:500 15px/1.15 var(--font);letter-spacing:-.02em;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  cursor:pointer;transition:opacity .15s ease}
-.gbtn:active{opacity:.6}
+  cursor:pointer;transition:opacity .2s ease,transform .2s ease}
+.gbtn:active{opacity:.6;transform:scale(.97);transition-duration:0s}
 .gbtn small{font-size:11px;color:var(--faint);font-weight:400;letter-spacing:0}
 .gbtn.again{color:var(--red)}
 .gbtn.hard{color:var(--gold)}
@@ -452,6 +477,8 @@ select{appearance:none;-webkit-appearance:none}
     <div class="stage">
       <div class="face" id="tg-face">
         <div class="meta"><span id="tg-fach" class="pill tag"></span></div>
+        <div class="swipetag no" id="tg-no">Learn it</div>
+        <div class="swipetag yes" id="tg-yes">I know it</div>
         <div class="word" id="tg-word"></div>
         <div class="hint">Do you already know this word?</div>
       </div>

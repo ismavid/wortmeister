@@ -469,6 +469,80 @@ function A_extendedSample(w){
   ok('pace series is one entry per day', M.paceSeries(7).length === 7);
   M.A.set.history = histBackup;
 
+  // ------------------------------------------------------- motion physics
+  console.log('\n== motion (Apple fluid-interface model) ==');
+
+  // momentum projection: where a flick is GOING, not where the finger stopped
+  ok('a still finger projects nowhere', M.projectMomentum(0) === 0);
+  ok('a flick projects forward', M.projectMomentum(1000) > 0);
+  ok('a flick projects backward when thrown left', M.projectMomentum(-1000) < 0);
+  ok('projection scales with velocity',
+    M.projectMomentum(2000) > M.projectMomentum(1000));
+  ok('projection uses exponential decay, not v-squared', (() => {
+    // Apple's form is linear in v: doubling velocity doubles the distance.
+    // The textbook v²/2a would quadruple it — and lands visibly short.
+    const a = M.projectMomentum(500), b = M.projectMomentum(1000);
+    return Math.abs(b / a - 2) < 1e-6;
+  })(), M.projectMomentum(500) + ' / ' + M.projectMomentum(1000));
+  ok('a 1000px/s flick throws about half a screen',
+    M.projectMomentum(1000) > 300 && M.projectMomentum(1000) < 700,
+    M.projectMomentum(1000).toFixed(0) + 'px');
+  ok('a snappier deceleration travels less',
+    M.projectMomentum(1000, 0.99) < M.projectMomentum(1000, 0.998));
+
+  // rubber-banding: resistance grows, and never fully stops
+  ok('no overshoot means no resistance', M.rubberband(0, 400) === 0);
+  ok('a little overshoot moves nearly freely', (() => {
+    const r = M.rubberband(10, 400);
+    return r > 4 && r < 10;
+  })(), M.rubberband(10, 400).toFixed(1));
+  ok('resistance grows with distance past the edge',
+    M.rubberband(200, 400) > M.rubberband(50, 400));
+  ok('but the card never stops responding entirely',
+    M.rubberband(1000, 400) > M.rubberband(500, 400));
+  ok('resistance is sub-linear — you always lose ground', (() => {
+    const a = M.rubberband(100, 400), b = M.rubberband(200, 400);
+    return b < a * 2;
+  })());
+  ok('rubber-banding is symmetric', M.rubberband(-100, 400) === -M.rubberband(100, 400));
+
+  // the spring must be interruptible and hand back its live state
+  const settled = await new Promise(res => {
+    let last = null, frames = 0;
+    const t = setTimeout(() => res({ ok: false, last, frames }), 4000);
+    M.spring({
+      from: 0, to: 100, velocity: 0, damping: 1, response: 0.2,
+      onFrame: v => { last = v; frames++; },
+      onDone: () => { clearTimeout(t); res({ ok: last === 100, last, frames }); }
+    });
+  });
+  ok('a spring converges exactly onto its target', settled.ok,
+    'ended at ' + settled.last + ' after ' + settled.frames + ' frames');
+  ok('it gets there over several frames, not in one jump',
+    settled.frames > 3, settled.frames);
+
+  const bouncy = await new Promise(res => {
+    let peak = 0;
+    const t = setTimeout(() => res(peak), 4000);
+    M.spring({
+      from: 0, to: 100, velocity: 0, damping: 0.55, response: 0.25,
+      onFrame: v => { peak = Math.max(peak, v); },
+      onDone: () => { clearTimeout(t); res(peak); }
+    });
+  });
+  ok('an under-damped spring overshoots', bouncy > 100, 'peak ' + bouncy.toFixed(1));
+  ok('a critically damped one does not', settled.last <= 100.001, settled.last);
+  ok('an interrupted spring reports where it actually is, not the target', (() => {
+    const h = M.spring({ from: 0, to: 500, velocity: 0, onFrame: () => {} });
+    const s = h.stop();
+    return typeof s.value === 'number' && typeof s.velocity === 'number';
+  })());
+  ok('stopping a spring marks it done', (() => {
+    const h = M.spring({ from: 0, to: 500, velocity: 0, onFrame: () => {} });
+    h.stop();
+    return h.done === true;
+  })());
+
   // ------------------------------------------------------- milestone bar
   console.log('\n== milestone estimate ==');
   const msBackup = new Map(M.A.state);
@@ -481,7 +555,7 @@ function A_extendedSample(w){
   let ms = setup(() => {});
   ok('with nothing sorted the target is the whole scope',
     ms.target === totalScoped, ms.target + ' vs ' + totalScoped);
-  ok('with nothing sorted nothing is learned', ms.learned === 0 && ms.pct === 0);
+  ok('with nothing sorted nothing is mastered', ms.mastered === 0 && ms.pct === 0);
   ok('an untouched pile is flagged as an estimate', ms.estimated === true);
   ok('there is no known-rate to report yet', ms.knewRate === null);
 
@@ -499,7 +573,62 @@ function A_extendedSample(w){
     return ms.target === 600 + Math.round(unsorted * 0.6);
   })(), 'target ' + ms.target);
   ok('the target is well below the raw scope', ms.target < totalScoped, ms.target);
-  ok('nothing is learned yet', ms.learned === 0 && ms.pct === 0);
+  ok('a sorted-but-unstudied word is not progress',
+    ms.mastered === 0 && ms.learning === 0 && ms.pctStarted === 0);
+
+  // The estimate must re-project as you sort. If the rate you find stays the
+  // same the target legitimately does not move, so this sorts a batch that is
+  // mostly already-known and checks the target comes down.
+  const before = ms.target;
+  ms = setup(() => {
+    for (let i = 0; i < 1400; i++) M.A.state.set(scopedIds[i], rec2({ s: 'known', r: 0, i: 0 }));
+    for (let i = 1400; i < 2000; i++) M.A.state.set(scopedIds[i], rec2({ s: 'queued', r: 0, i: 0 }));
+  });
+  ok('a batch of mostly-known words lowers the estimate',
+    ms.target < before, before + ' -> ' + ms.target);
+  ok('the known-rate rose to match what was found',
+    Math.abs(ms.knewRate - 0.7) < 1e-9, ms.knewRate);
+  ok('the unsorted pile shrinks as you sort', ms.unsorted === totalScoped - 2000);
+
+  // ---- graded progress: the learning process itself must count ----
+  ok('a never-seen word is worth nothing', M.wordStrength(null) === 0);
+  ok('a sorted-but-unstudied word is worth nothing',
+    M.wordStrength({ s: 'queued', r: 0, i: 0 }) === 0);
+  ok('a word in learning is worth something',
+    M.wordStrength({ s: 'learning', r: 1, i: 0 }) > 0);
+  ok('a fresh review is worth more than one in learning',
+    M.wordStrength({ s: 'review', r: 3, i: 3 }) >
+    M.wordStrength({ s: 'learning', r: 1, i: 0 }));
+  ok('a longer interval is worth more', (() => {
+    const a = M.wordStrength({ s: 'review', r: 4, i: 3 });
+    const b = M.wordStrength({ s: 'review', r: 5, i: 12 });
+    const c = M.wordStrength({ s: 'review', r: 6, i: 20 });
+    return a < b && b < c && c < 1;
+  })());
+  ok('reaching the mastery interval is worth exactly one',
+    M.wordStrength({ s: 'review', r: 6, i: M.CFG.MASTER_DAYS }) === 1);
+  ok('a word retired after study is worth one',
+    M.wordStrength({ s: 'known', r: 5, i: 0 }) === 1);
+  ok('a word you already knew is not counted as progress',
+    M.wordStrength({ s: 'known', r: 0, i: 0 }) === 0);
+  ok('a leech still counts a little, but only a little',
+    M.wordStrength({ s: 'leech', r: 12, i: 30 }) > 0 &&
+    M.wordStrength({ s: 'leech', r: 12, i: 30 }) < 0.2);
+  ok('strength never exceeds one',
+    M.wordStrength({ s: 'review', r: 9, i: 400 }) === 1);
+
+  // the bar has to move for a single extra correct answer
+  ms = setup(() => {
+    for (let i = 0; i < 100; i++) M.A.state.set(scopedIds[i], rec2({ s: 'review', i: 3, r: 3 }));
+  });
+  const beforeStep = ms.pctStarted;
+  ms = setup(() => {
+    for (let i = 0; i < 100; i++) M.A.state.set(scopedIds[i], rec2({ s: 'review', i: 3, r: 3 }));
+    M.A.state.set(scopedIds[0], rec2({ s: 'review', i: 8, r: 4 }));
+  });
+  ok('one more correct answer moves the bar', ms.pctStarted > beforeStep,
+    beforeStep + ' -> ' + ms.pctStarted);
+  ok('but it does not yet count as mastered', ms.mastered === 0, ms.mastered);
 
   // now learn some of them
   ms = setup(() => {
@@ -509,11 +638,11 @@ function A_extendedSample(w){
     for (let i = 400; i < 550; i++) M.A.state.set(scopedIds[i], rec2({ s: 'review', i: 30, r: 6 }));
     for (let i = 550; i < 600; i++) M.A.state.set(scopedIds[i], rec2({ s: 'known', r: 4, i: 0 }));
   });
-  ok('a mature review counts as learned', ms.learned === 200, ms.learned);
+  ok('a mature review counts as mastered', ms.mastered === 200, ms.mastered);
   ok('a word retired after study counts as learned, not as already known',
     ms.alreadyKnew === 400, ms.alreadyKnew);
-  ok('progress is learned over the estimated target',
-    Math.abs(ms.pct - ms.learned / ms.target) < 1e-9, ms.pct);
+  ok('progress is mastered over the estimated target',
+    Math.abs(ms.pct - ms.mastered / ms.target) < 1e-9, ms.pct);
   ok('progress is a sane fraction', ms.pct > 0 && ms.pct < 1, ms.pct);
 
   // everything sorted -> no estimate left
@@ -528,6 +657,30 @@ function A_extendedSample(w){
     ms.target === totalScoped - 3000, ms.target);
   ok('finishing everything reads as complete', ms.pct === 1, ms.pct);
   ok('progress never exceeds the target', ms.pct <= 1);
+
+  // ---- the week ----
+  const whb = M.A.set.history;
+  M.A.set.history = {};
+  const wkStart = M.weekStart();
+  ok('the week is anchored to a Monday',
+    new Date(wkStart + 'T12:00:00').getDay() === 1, wkStart);
+  ok('the week start is on or before today', wkStart <= M.today(), wkStart);
+
+  let wk = M.weekProgress(10);
+  ok('an empty week has no progress', wk.done === 0 && wk.pct === 0);
+  ok('the weekly target is the daily pace times seven', wk.target === 70, wk.target);
+  M.A.set.history[M.today()] = { new: 25, rev: 100 };
+  wk = M.weekProgress(10);
+  ok('new words this week count towards it', wk.done === 25, wk.done);
+  ok('reviews do not count towards the new-word target', wk.done === 25);
+  ok('the weekly bar is a fraction of the target',
+    Math.abs(wk.pct - 25 / 70) < 1e-9, wk.pct);
+  ok('what is left is reported', wk.left === 45, wk.left);
+  ok('days left is within the week', wk.daysLeft >= 0 && wk.daysLeft <= 6, wk.daysLeft);
+  M.A.set.history[M.today()] = { new: 500, rev: 0 };
+  wk = M.weekProgress(10);
+  ok('a big week is capped at full', wk.pct === 1 && wk.left === 0);
+  M.A.set.history = whb;
 
   M.A.state.clear();
   for (const [k, v] of msBackup) M.A.state.set(k, v);

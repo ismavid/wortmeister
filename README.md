@@ -123,9 +123,29 @@ a `~` until the pile is empty, and sharpens every time you sort more. Stats
 shows the basis: the share you already knew, the estimated target, and how many
 of them you have learned.
 
-A word counts as *learned* when you have studied it to a 21-day interval, or
-retired it after studying. A word you simply marked as known at sort time was
-never yours to learn, so it counts towards neither side.
+### Mastered, learning, and why there are two bands
+
+Reaching a 21-day interval takes **six correct answers spaced 3, 8 and 20 days
+apart** — about a month of calendar time per word. A bar that only counted
+those would read zero for weeks while you were plainly getting somewhere.
+
+So the bar has two bands. The solid one is **mastered**: studied to a 21-day
+interval, or retired after studying. The lighter one is **learning**, and it is
+graded rather than counted — a word on an 8-day interval is worth more than one
+you answered once, so the band creeps forward on *every* review rather than
+jumping once a month.
+
+A word you simply marked as known at sort time counts towards neither. It was
+never yours to learn.
+
+### This week
+
+The thin bar above it is the week: new words started since Monday, against the
+daily pace the exam demands times seven. Days is the whole arc; the week is the
+unit you can still course-correct inside.
+
+Both re-project every time Home renders, so sorting a batch of words you turn
+out to already know pulls the target down immediately.
 
 ---
 
@@ -239,7 +259,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-421 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+465 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

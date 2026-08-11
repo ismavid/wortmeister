@@ -25,6 +25,7 @@ const CFG = {
   FUZZ: 1,                               // interval jitter on; 0 disables (tests)
   FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
   SIBLING_GAP: 5,                        // cards to keep between related words
+  MASTER_DAYS: 21,                       // interval at which a word is "learned"
   MIN_DAY: 20,                           // cards that still count as a day done
   FREEZE_EVERY: 7,                       // clean days earned per streak freeze
   FREEZE_MAX: 2,
@@ -1191,28 +1192,89 @@ function overview() {
  *
  * Derived from existing records only. Nothing new is stored.
  */
+/**
+ * How far through the learning process one word is, 0 to 1.
+ *
+ * Mastery is not a switch. A word answered once is genuinely further along
+ * than one never seen, and a word sitting on a 14-day interval is nearly
+ * there. Grading it this way is what lets the bar move on every review instead
+ * of jumping only when a word crosses CFG.MASTER_DAYS — which takes about a
+ * month per word.
+ */
+function wordStrength(st) {
+  if (!st) return 0;
+  if (st.s === 'known') return st.r ? 1 : 0;      // retired at sort time is not progress
+  if (st.s === 'queued' || st.s === 'new') return 0;
+  if (st.s === 'leech') return 0.1;               // started, but going backwards
+  if (st.s === 'learning' || st.s === 'relearning') return st.r ? 0.15 : 0;
+  if (st.s === 'review') {
+    if (st.i >= CFG.MASTER_DAYS) return 1;
+    return 0.3 + 0.7 * Math.max(0, st.i) / CFG.MASTER_DAYS;
+  }
+  return 0;
+}
+
 function milestone() {
   const scoped = A.words.filter(inScope);
-  let sorted = 0, alreadyKnew = 0, learned = 0;
+  let sorted = 0, alreadyKnew = 0, mastered = 0, learning = 0, strength = 0;
   for (const w of scoped) {
     const st = A.state.get(w.id);
     if (!st) continue;
     sorted++;
     // retired at sort time without ever being studied — you already knew it
     if (st.s === 'known' && !st.r) { alreadyKnew++; continue; }
-    if (st.s === 'known' || (st.s === 'review' && st.i >= 21)) learned++;
+    const s = wordStrength(st);
+    strength += s;
+    if (s >= 1) mastered++;
+    else if (s > 0) learning++;
   }
   const unsorted = scoped.length - sorted;
   const toLearnSorted = sorted - alreadyKnew;
-  // with nothing sorted there is no rate to project, so assume the worst
+  // Re-projected from scratch on every render, so the target tightens with
+  // each word you sort: the more you have sorted, the less of the estimate is
+  // guesswork. With nothing sorted there is no rate yet, so assume the worst.
   const needRate = sorted ? toLearnSorted / sorted : 1;
   const estUnsorted = Math.round(unsorted * needRate);
   const target = toLearnSorted + estUnsorted;
   return {
-    scoped: scoped.length, sorted, alreadyKnew, learned, unsorted,
-    target, estimated: unsorted > 0,
+    scoped: scoped.length, sorted, alreadyKnew, mastered, learning, unsorted,
+    strength, target, estimated: unsorted > 0,
     knewRate: sorted ? alreadyKnew / sorted : null,
-    pct: target ? Math.min(1, learned / target) : 0
+    toGo: Math.max(0, target - mastered - learning),
+    pct: target ? Math.min(1, mastered / target) : 0,
+    // graded progress: moves on every review, not once a month per word
+    pctStarted: target ? Math.min(1, strength / target) : 0
+  };
+}
+
+/** Monday-anchored start of the current local week. */
+function weekStart(ms) {
+  const d = new Date(ms == null ? Date.now() : ms);
+  const dow = (d.getDay() + 6) % 7;                 // Monday = 0
+  return today(d.getTime() - dow * CFG.DAY);
+}
+
+/**
+ * The middle horizon: new words started this week against the pace the exam
+ * actually demands. Days is the whole arc; the week is the unit you can still
+ * course-correct inside.
+ */
+function weekProgress(need) {
+  const start = weekStart();
+  let done = 0, days = 0;
+  for (let i = 0; i < 7; i++) {
+    const key = today(Date.now() - i * CFG.DAY);
+    if (key < start) break;
+    done += (A.set.history[key] || {}).new || 0;
+    days++;
+  }
+  const perDay = need == null ? overview().need : need;
+  const target = Math.max(1, perDay * 7);
+  return {
+    done, target, days, daysLeft: 7 - days,
+    left: Math.max(0, target - done),
+    pct: Math.min(1, done / target),
+    onTrack: done >= perDay * days
   };
 }
 
@@ -1221,20 +1283,34 @@ function renderMilestone() {
   const el = $('#milestone');
   if (!el) return;
   const m = milestone();
-  const pct = (m.pct * 100).toFixed(1);
-  const left = Math.max(0, m.target - m.learned);
+  // a started word gets a visible sliver even when it rounds to nothing
+  const seen = v => v > 0 ? Math.max(v * 100, 1.5).toFixed(1) : '0';
+  const pct = seen(m.pct), started = seen(m.pctStarted);
   // The width is set to its true value immediately and the growth is a
   // transform animation on top. Animating the width itself would mean the bar
   // reads zero until the transition finishes — wrong under reduced motion, in
   // a screenshot, or if the render is interrupted.
+  const wk = weekProgress();
+  const wpct = wk.done > 0 ? Math.max(wk.pct * 100, 2).toFixed(1) : '0';
+
   el.innerHTML = `
+    <div class="wbar"><i class="${wk.pct >= 1 ? 'done' : ''}" style="width:${wpct}%"></i></div>
+    <div class="mlabel wlabel">
+      <span><b>${wk.done.toLocaleString('en')}</b> of ${
+        wk.target.toLocaleString('en')} this week</span>
+      <span>${wk.daysLeft === 0 ? 'last day' :
+        wk.daysLeft + (wk.daysLeft === 1 ? ' day left' : ' days left')}</span>
+    </div>
+
     <div class="mbar">
-      <i class="${m.pct >= 1 ? 'done' : ''}" style="width:${Math.max(pct, m.learned ? 1.5 : 0)}%"></i>
+      <i class="mlearning" style="width:${started}%"></i>
+      <i class="mmastered ${m.pct >= 1 ? 'done' : ''}" style="width:${pct}%"></i>
       <div class="mticks">${'<span></span>'.repeat(10)}</div>
     </div>
     <div class="mlabel">
-      <span><b>${m.learned.toLocaleString('en')}</b> learned</span>
-      <span>${left.toLocaleString('en')} to go${m.estimated ? ' (est.)' : ''}</span>
+      <span><b>${m.mastered.toLocaleString('en')}</b> mastered${
+        m.learning ? ` · <b>${m.learning.toLocaleString('en')}</b> learning` : ''}</span>
+      <span>${m.toGo.toLocaleString('en')} to go${m.estimated ? ' (est.)' : ''}</span>
     </div>`;
 }
 
@@ -1373,6 +1449,78 @@ function installBanner() {
     survives.<br><br>Share ⎋ → “Add to Home Screen”.</p></div>`;
 }
 
+/* ======================= motion primitives =======================
+   Springs, momentum projection and rubber-banding, hand-rolled because the
+   app carries no runtime dependencies. Apple's model: think in damping ratio
+   and response, not mass/stiffness/damping. */
+
+/**
+ * Where a flick would come to rest. Apple's exponential-decay projection from
+ * Designing Fluid Interfaces — not the textbook v²/2a, which lands short.
+ */
+function projectMomentum(velocity, decel) {
+  const d = decel == null ? 0.998 : decel;
+  return (velocity / 1000) * d / (1 - d);
+}
+
+/**
+ * Progressive resistance past a boundary. A hard stop reads as frozen; real
+ * things slow before they stop.
+ */
+function rubberband(overshoot, dimension, constant) {
+  const c = constant == null ? 0.55 : constant;
+  return (overshoot * dimension * c) / (dimension + c * Math.abs(overshoot));
+}
+
+/**
+ * Damped spring, integrated per frame. Returns a handle whose .stop() gives
+ * back the live value and velocity, so an interrupted animation can be
+ * re-targeted from where it actually is rather than from where it was going.
+ * That is the whole point of §3 — never start from the target value.
+ */
+function spring(opts) {
+  const damping = opts.damping == null ? 1 : opts.damping;
+  const response = opts.response == null ? 0.4 : opts.response;
+  const w0 = 2 * Math.PI / response;
+  let x = opts.from - opts.to;          // displacement from target
+  let v = opts.velocity || 0;
+  let raf = 0, last = 0, stopped = false;
+
+  const step = now => {
+    if (stopped) return;
+    const dt = Math.min((now - last) / 1000, 1 / 30);   // clamp after a stall
+    last = now;
+    // semi-implicit Euler; stable at these frequencies
+    const a = -w0 * w0 * x - 2 * damping * w0 * v;
+    v += a * dt;
+    x += v * dt;
+    if (Math.abs(x) < 0.4 && Math.abs(v) < 12) {
+      opts.onFrame(opts.to, 0);
+      stopped = true;
+      if (opts.onDone) opts.onDone();
+      return;
+    }
+    opts.onFrame(opts.to + x, v);
+    raf = requestAnimationFrame(step);
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    raf = requestAnimationFrame(now => { last = now; step(now + 16); });
+  } else {                                   // no rAF (tests): settle at once
+    opts.onFrame(opts.to, 0);
+    if (opts.onDone) opts.onDone();
+    stopped = true;
+  }
+  return {
+    stop() {
+      stopped = true;
+      if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+      return { value: opts.to + x, velocity: v };
+    },
+    get done() { return stopped; }
+  };
+}
+
 /* ============================ triage ============================ */
 const TG = { list: [], i: 0, undo: [] };
 function startTriage() {
@@ -1388,6 +1536,7 @@ function nextTriage() {
     setTimeout(() => go('home'), 900);
     return;
   }
+  if (TG.resetSwipe) TG.resetSwipe();
   const w = TG.list[TG.i];
   $('#tg-word').textContent = display(w);
   setTint(w.level.replace('*', ''));
@@ -1418,17 +1567,95 @@ function triage(action) {
 }
 $$('[data-tg]').forEach(b => b.addEventListener('click', () => triage(b.dataset.tg)));
 
-// swipe: right = know, left = learn
+/* Swipe: right = know, left = learn.
+   The card tracks the finger 1:1, hints at the outcome as you go, projects
+   where a flick would land, and can be grabbed again mid-flight. The previous
+   version only read the final touch position, which threw away every frame of
+   feedback in between. */
 (function swipe() {
   const el = $('#tg-face');
-  let x0 = null, y0 = null;
-  el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-  el.addEventListener('touchend', e => {
-    if (x0 == null) return;
-    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
-    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) triage(dx > 0 ? 'know' : 'learn');
-    x0 = y0 = null;
-  }, { passive: true });
+  if (!el) return;
+  const HYST = 10;              // movement before we commit to a direction
+  let anim = null, x = 0, grabbed = false, axis = null;
+  let startX = 0, startY = 0, lastX = 0, lastT = 0, vel = 0;
+
+  const width = () => (el.getBoundingClientRect().width || 320);
+  const paint = px => {
+    x = px;
+    const w = width();
+    const p = Math.max(-1, Math.min(1, px / (w * 0.5)));
+    el.style.transform = `translate3d(${px}px,0,0) rotate(${p * 5}deg)`;
+    // telegraph the outcome rather than making the user guess the threshold
+    const know = $('#tg-yes'), learn = $('#tg-no');
+    if (know) know.style.opacity = Math.max(0, p);
+    if (learn) learn.style.opacity = Math.max(0, -p);
+  };
+  const reset = () => {
+    if (anim) { anim.stop(); anim = null; }
+    el.style.transition = '';
+    paint(0);
+  };
+  TG.resetSwipe = reset;
+
+  el.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    // interrupt: take over from wherever the card actually is right now
+    let v0 = 0;
+    if (anim) { const s = anim.stop(); x = s.value; v0 = s.velocity; anim = null; }
+    grabbed = true; axis = null;
+    startX = e.clientX - x; startY = e.clientY;
+    lastX = e.clientX; lastT = performance.now(); vel = v0;
+    if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+  });
+
+  el.addEventListener('pointermove', e => {
+    if (!grabbed) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!axis) {
+      if (Math.abs(dx) < HYST && Math.abs(dy) < HYST) return;
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (axis === 'y') { grabbed = false; return; }   // let the page have it
+    }
+    const now = performance.now(), dt = Math.max(1, now - lastT);
+    vel = (e.clientX - lastX) / dt * 1000;             // px per second
+    lastX = e.clientX; lastT = now;
+
+    // soft edges: the card keeps responding, it just stops keeping up
+    const w = width(), lim = w * 0.62;
+    paint(Math.abs(dx) > lim
+      ? Math.sign(dx) * (lim + rubberband(Math.abs(dx) - lim, w))
+      : dx);
+  });
+
+  const release = () => {
+    if (!grabbed) return;
+    grabbed = false;
+    const w = width();
+    // decide from where the flick is GOING, not where the finger stopped
+    const projected = x + projectMomentum(vel);
+    const commit = Math.abs(projected) > w * 0.38;
+    const dir = projected > 0 ? 1 : -1;
+
+    if (commit) {
+      const action = dir > 0 ? 'know' : 'learn';
+      anim = spring({
+        from: x, to: dir * w * 1.6, velocity: vel,
+        damping: 1, response: 0.32,
+        onFrame: paint,
+        // snap back to origin BEFORE the next word renders, or it flashes in
+        // at the off-screen position for a frame
+        onDone: () => { anim = null; reset(); triage(action); }
+      });
+    } else {
+      // a flick that did not carry gets a little bounce coming back
+      anim = spring({
+        from: x, to: 0, velocity: vel, damping: 0.8, response: 0.34,
+        onFrame: paint, onDone: () => { anim = null; }
+      });
+    }
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
 })();
 
 /* ============================ study ============================ */
@@ -2118,6 +2345,7 @@ function renderStats() {
   const secs = m => (medianFor(m) / 1000).toFixed(1) + ' s';
 
   const ms = milestone();
+  const wk = weekProgress();
   const ret = retention(30);
   const left = remainingToLearn();
   const proj = projectedDays();
@@ -2153,8 +2381,12 @@ function renderStats() {
         ms.knewRate == null ? '–' : Math.round(ms.knewRate * 100) + '%'}</b></div>
       <div class="stat"><span>Words you will need to learn</span><b>${
         ms.estimated ? '~' : ''}${ms.target.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Learned so far</span><b>${
-        ms.learned.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Mastered so far</span><b>${
+        ms.mastered.toLocaleString('en')}</b></div>
+      <div class="stat"><span>Still learning</span><b>${
+        ms.learning.toLocaleString('en')}</b></div>
+      <div class="stat"><span>This week</span><b>${
+        wk.done.toLocaleString('en')} of ${wk.target.toLocaleString('en')}</b></div>
       <div class="stat"><span>Words left to learn</span><b>${left.toLocaleString('en')}</b></div>
       <div class="stat"><span>Finished by</span><b style="color:${projColor}">${projLabel}</b></div>
       <div class="stat"><span>Exam</span><b>${examLabel}</b></div>
@@ -2337,6 +2569,8 @@ window.__wm = {
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
+  wordStrength, weekStart, weekProgress,
+  projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   advanceStreak, daysBetween, heatSeries, renderHeat,
   genderMark, displayMarked, relatives, indexFamilies, gradeWord, pickMatchRound, MT,
