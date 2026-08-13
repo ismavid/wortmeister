@@ -180,8 +180,8 @@ function A_extendedSample(w){
   ok('a session opens with a pairing round',
     !w.document.getElementById('st-matchpad').classList.contains('hidden'),
     w.document.getElementById('st-mode').textContent);
-  ok('the round shows five pairs',
-    w.document.querySelectorAll('#st-matchgrid .mtile').length === 10);
+  ok('the round shows a full set of pairs',
+    w.document.querySelectorAll('#st-matchgrid .mtile').length === M.CFG.MATCH_PAIRS * 2);
   ok('the mode reads Match', w.document.getElementById('st-mode').textContent === 'Match');
   ok('the reveal button cannot hijack the round', (() => {
     click('#st-reveal');
@@ -194,7 +194,7 @@ function A_extendedSample(w){
 
   const tiles = () => [...w.document.querySelectorAll('#st-matchgrid .mtile')];
   const roundIds = [...new Set(tiles().map(t => +t.dataset.wid))];
-  ok('the round covers five distinct words', roundIds.length === 5, roundIds.join(','));
+  ok('the round covers distinct words', roundIds.length === M.CFG.MATCH_PAIRS, roundIds.join(','));
   ok('every word in the round is lightly seen',
     roundIds.every(id => {
       const st = M.A.state.get(id);
@@ -217,7 +217,7 @@ function A_extendedSample(w){
     await sleep(20);
   }
   ok('matching a pair clears both tiles',
-    tiles().filter(t => t.classList.contains('gone')).length === 10);
+    tiles().filter(t => t.classList.contains('gone')).length === M.CFG.MATCH_PAIRS * 2);
   await sleep(400);
   ok('the round grades every word it covered',
     roundIds.every(id => (M.A.state.get(id) || {}).m &&
@@ -968,7 +968,7 @@ function A_extendedSample(w){
   ok('reps 2 switches to filling it in', modeAt(plainWord, 2) === 'hint', modeAt(plainWord, 2));
   ok('reps 4 still fills it in', modeAt(plainWord, 4) === 'hint');
   ok('reps 5 is typing', modeAt(plainWord, 5) === 'type', modeAt(plainWord, 5));
-  ok('reps 9 is still typing', modeAt(plainWord, 9) === 'type');
+  ok('reps 9 fills it in again', modeAt(plainWord, 9) === 'hint', modeAt(plainWord, 9));
   ok('a verb keeps the base progression at reps 4', modeAt(verbForms, 4) === 'hint');
   ok('a verb keeps the base progression at reps 5', modeAt(verbForms, 5) === 'type');
   ok('a verb takes the form drill at reps 3', modeAt(verbForms, 3) === 'verb',
@@ -984,8 +984,8 @@ function A_extendedSample(w){
   ok('a noun interleaves the article drill from rep 2',
     modeAt(nounWord, 2) === 'article', modeAt(nounWord, 2));
   ok('the noun returns to filling it in at rep 3', modeAt(nounWord, 3) === 'hint');
-  ok('the article drill returns every third rep', modeAt(nounWord, 5) === 'article');
-  ok('the noun still reaches plain typing', modeAt(nounWord, 9) === 'type', modeAt(nounWord, 9));
+  ok('the article drill returns every fourth rep', modeAt(nounWord, 6) === 'article', modeAt(nounWord, 6));
+  ok('a noun still reaches plain typing', modeAt(nounWord, 5) === 'type', modeAt(nounWord, 5));
   ok('an article-less noun is never article-drilled',
     !M.isDrillableNoun({ pos: 'noun', lemma: 'Leute', article: '' }));
 
@@ -1042,16 +1042,16 @@ function A_extendedSample(w){
   ok('a near miss grades Hard, not Good', Math.abs(got.e - 2.35) < 1e-9, got.e);
   ok('a near miss does not lapse the card', got.l === 0, got.l);
 
-  await openStudy(nounWord, 5);
-  ok('a noun at rep 5 is article-drilled first', el('st-mode').textContent === 'Article');
   await openStudy(nounWord, 6);
+  ok('a noun at rep 6 is article-drilled', el('st-mode').textContent === 'Article', el('st-mode').textContent);
+  await openStudy(nounWord, 5);
   ok('the noun typing prompt asks for the article',
     el('st-hint').textContent === 'Include the article', el('st-hint').textContent);
   setInput(nounWord.lemma);                     // no article → wrong
   click('#st-check'); await sleep(30);
   ok('a noun typed without its article is wrong', el('st-result').className.includes('bad'));
 
-  await openStudy(nounWord, 6);
+  await openStudy(nounWord, 5);
   setInput(nounWord.article + ' ' + nounWord.lemma);
   click('#st-check'); await sleep(30);
   ok('a noun typed with its article is correct', el('st-result').className.includes('good'));
@@ -1352,6 +1352,62 @@ function A_extendedSample(w){
   click('#st-check'); await sleep(30);
   ok('a near miss holds the level steady', M.A.state.get(plainWord.id).h === 1,
     M.A.state.get(plainWord.id).h);
+
+  // -------------------------------------------------- failed cards come back
+  console.log('\n== re-entry distance ==');
+  {
+    // a realistic long session, and a card failed early in it
+    const deck = M.A.words.filter(x => M.inScope(x)).slice(0, 120);
+    const target = deck[3];
+    M.ST.queue = deck.slice();
+    M.ST.i = 3;
+    M.ST.again = new Map();
+    M.MT.words = null;
+    const st = { s: 'relearning', e: 2.2, i: 1, d: Date.now() + 5 * 60000,
+      r: 4, l: 1, p: 0, m: {}, t: 0 };
+
+    M.requeueIfSoon(target, st);
+    const first = M.ST.queue.indexOf(target, 4);
+    ok('a failed card comes back within a handful of cards',
+      first > 3 && first - 4 <= 6, 'reappears ' + (first - 4) + ' cards later');
+    ok('it is not appended to the end of the queue',
+      first < M.ST.queue.length - 10, first + ' of ' + M.ST.queue.length);
+    ok('the queue grew by exactly one', M.ST.queue.length === 121, M.ST.queue.length);
+
+    // fail it again: the gap should widen, not stay flat
+    M.ST.i = first;
+    M.requeueIfSoon(target, st);
+    const second = M.ST.queue.indexOf(target, first + 1);
+    ok('a second failure comes back further out',
+      second - first > first - 4, 'first ' + (first - 4) + ', then ' + (second - first - 1));
+    ok('but still inside the session', second < M.ST.queue.length);
+
+    // the cap still holds
+    M.ST.again = new Map([[target.id, M.CFG.MAX_REENTRY]]);
+    const before = M.ST.queue.length;
+    M.requeueIfSoon(target, st);
+    ok('the per-word cap still stops it eventually',
+      M.ST.queue.length === before, M.ST.queue.length);
+
+    // a card that is genuinely far off must not be pulled back in
+    M.ST.again = new Map();
+    const far = { s: 'review', e: 2.5, i: 9, d: Date.now() + 9 * 86400000,
+      r: 6, l: 0, p: -1, m: {}, t: 0 };
+    const n0 = M.ST.queue.length;
+    M.requeueIfSoon(deck[10], far);
+    ok('a card due in days is not re-queued', M.ST.queue.length === n0);
+
+    // during a pairing round the cursor jumps by the round size — the card
+    // must land ahead of that, not behind it where it would never be seen
+    M.ST.queue = deck.slice(); M.ST.i = 10; M.ST.again = new Map();
+    M.MT.words = deck.slice(10, 10 + M.CFG.MATCH_PAIRS);
+    M.requeueIfSoon(deck[10], st);
+    const afterRound = M.ST.queue.indexOf(deck[10], 11);
+    ok('a word failed inside a pairing round lands after the round',
+      afterRound >= 10 + M.CFG.MATCH_PAIRS, afterRound + ' vs cursor ' +
+      (10 + M.CFG.MATCH_PAIRS));
+    M.MT.words = null;
+  }
 
   // ------------------------------------------------------- session re-entry
   console.log('\n== session re-entry cap ==');

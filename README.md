@@ -59,13 +59,13 @@ production as you answer it:
 
 | Reps | Mode | Prompt | Answer |
 |---|---|---|---|
-| opening | Match | five words, five meanings | tap a word, then its meaning |
+| opening, then every 22 cards | Match | six words, six meanings | tap a word, then its meaning |
 | 0–1 | German → English | `der Betrieb, Betriebe` | tap to flip, then rate |
 | 2–4 | **Fill it in** | `nothing` + `nic···` | type the German, with a shrinking scaffold |
-| 5+ | **Fill it in** (half the slots) | `nothing` + `······` | type it with no help left |
+| 5+ | **Fill it in** (2 slots in 3) | `nothing` + `······` | type it with no help left |
 | 5+ | Type it | `to develop` | type the German, no scaffold |
 | 5+ | In a sentence | `_____ Mensch ist sterblich.` | pick the word that fits |
-| from 2 | Article | `Bewerbung` | tap der / die / das |
+| every 4th from 2 | Article | `Bewerbung` | tap der / die / das |
 | from 3 | Verb forms | `anfangen` | type Präteritum + Partizip II, pick the auxiliary |
 | from 3 | Preposition | `sich bewerben ___ eine Stelle` | pick the preposition, then the case |
 
@@ -77,9 +77,15 @@ and grows back a step when you miss — getting it wrong should never cost you
 help. Nouns still need their article, and the article is never part of the
 scaffold, so gender is never given away.
 
-Specialist drills take every third slot rather than replacing the progression:
-nouns from rep 2 (gender), verbs from rep 3 (forms, and the governed
-preposition where one exists). A verb with both alternates between them.
+Specialist drills interleave rather than replacing the progression: nouns take
+the article drill every fourth rep from rep 2, verbs take forms or their
+governed preposition every third from rep 3. In practice that lands at roughly
+**69% Fill it in** for a plain word, 51% for a noun and 36% for a verb — it is
+the mode you get most in every case.
+
+The article slot is deliberately on a different cycle from the production
+slots. On the same one it would have swallowed every typing card a noun ever
+got, and you would never type a noun with its article again.
 
 **Every mode except the flip cards grades itself** — no buttons. Wrong is
 *Again*, right is *Good*, and the same response-time median that adjusts the
@@ -160,6 +166,12 @@ choice.
 A missed day is covered by a **streak freeze** rather than resetting a six-week
 streak to 1. You earn one per clean week, capped at two. Twelve weeks of
 activity show as a heatmap under Stats.
+
+**A card you fail comes straight back.** It is re-inserted a couple of cards
+ahead, then 5, then 10, then 18 if you keep missing it — expanding retrieval,
+bounded so it stays inside the same few minutes. It used to be appended to the
+end of the queue, which in a 231-card session meant about 23 minutes before you
+saw it again; that is not relearning.
 
 Cards do not clump. Intervals carry Anki-style jitter, so words you sorted in
 the same sprint and graded the same way stop resurfacing on the same day; the
@@ -259,7 +271,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-465 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+473 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

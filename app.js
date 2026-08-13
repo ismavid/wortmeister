@@ -20,7 +20,14 @@ const CFG = {
   FAST: 0.6, SLOW: 2.0,                  // response-time multipliers
   MED_WINDOW: 50, MED_CAP: 60000,
   TYPO_MIN_LEN: 5,                       // Levenshtein slack only above this
-  MAX_REENTRY: 3,                        // re-looks per word per session
+  MAX_REENTRY: 4,                        // re-looks per word per session
+  // Cards to let past before a re-looked word comes back. Expanding, because
+  // expanding retrieval beats a fixed gap — and bounded, because appending to
+  // the end of a 231-card queue meant ~23 minutes before you saw it again,
+  // which is not relearning, it is just failing twice.
+  REENTRY_GAPS: [2, 5, 10, 18],
+  MATCH_PAIRS: 6,                        // words per pairing round
+  MATCH_EVERY: 22,                       // cards between pairing rounds
   SETTINGS_DEBOUNCE: 1500,
   FUZZ: 1,                               // interval jitter on; 0 disables (tests)
   FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
@@ -966,7 +973,10 @@ function pickMode(w) {
   const st = getState(w.id);
   const reps = st ? st.r : 0;
 
-  if (isDrillableNoun(w) && reps >= 2 && reps % 3 === 2) return 'article';
+  // Every fourth rep, not every third: production below also keys on % 3, and
+  // on the same modulus the article slot would swallow every type/cloze slot a
+  // noun ever got — nouns would never be typed with their article again.
+  if (isDrillableNoun(w) && reps >= 2 && reps % 4 === 2) return 'article';
 
   if (w.pos === 'verb' && reps >= 3 && reps % 3 === 0) {
     const forms = hasVerbForms(w);
@@ -979,13 +989,12 @@ function pickMode(w) {
   if (reps < 2) return 'de2en';
   if (reps < 5) return 'hint';
 
-  // Production rotation. "Fill it in" takes half the slots because writing the
-  // word from a shrinking scaffold is the thing that actually sticks; typing
-  // cold and picking it in context share the rest.
-  const k = reps % 4;
-  if (k === 0 || k === 2) return 'hint';
-  if (k === 1) return 'type';
-  return sentencesFor(w) ? 'cloze' : 'type';
+  // Production rotation, weighted towards "Fill it in": two slots in every
+  // three. Writing the word from a shrinking scaffold is the thing that
+  // sticks, so it leads — but typing cold and choosing it in a sentence keep
+  // a slot each, because a mode you only ever see one way stops testing you.
+  if (reps % 3 !== 2) return 'hint';
+  return (sentencesFor(w) && reps % 6 === 2) ? 'cloze' : 'type';
 }
 
 /* ============================ history / streak ============================ */
@@ -1682,7 +1691,7 @@ function startStudy() {
   MT.words = null;
   // open with a pairing round when there are enough lightly-seen words, and
   // float them to the front so the round consumes a contiguous block
-  const round = ST.queue.length >= 8 ? pickMatchRound(ST.queue) : null;
+  const round = ST.queue.length >= CFG.MATCH_PAIRS + 3 ? pickMatchRound(ST.queue) : null;
   if (round) {
     const ids = new Set(round.map(w => w.id));
     ST.queue = round.concat(ST.queue.filter(w => !ids.has(w.id)));
@@ -1715,7 +1724,8 @@ function hidePads() {
    mode by design: it opens the session with fast wins so starting is cheap,
    and it forces discrimination between words you half-know rather than
    recall in isolation. Only words with few reps qualify. */
-function pickMatchRound(queue) {
+function pickMatchRound(queue, want) {
+  const n = want || CFG.MATCH_PAIRS;
   const eligible = [];
   const seen = new Set();
   for (const w of queue) {
@@ -1725,9 +1735,28 @@ function pickMatchRound(queue) {
     if (eligible.some(x => familyKey(x) === familyKey(w))) continue;  // no siblings
     seen.add(w.id);
     eligible.push(w);
-    if (eligible.length === 5) break;
+    if (eligible.length === n) break;
   }
-  return eligible.length === 5 ? eligible : null;
+  return eligible.length === n ? eligible : null;
+}
+
+/**
+ * Pull a pairing round to the cursor out of the cards still ahead.
+ * Splices by object identity so a word that appears twice (because it was
+ * re-looked) keeps its second instance — removing by id would silently drop
+ * cards from the session.
+ */
+function stageMatchRound() {
+  const upcoming = ST.queue.slice(ST.i);
+  const round = pickMatchRound(upcoming);
+  if (!round) return null;
+  const rest = upcoming.slice();
+  for (const w of round) {
+    const at = rest.indexOf(w);
+    if (at >= 0) rest.splice(at, 1);
+  }
+  ST.queue = ST.queue.slice(0, ST.i).concat(round, rest);
+  return round;
 }
 
 function startMatch(words) {
@@ -1751,7 +1780,7 @@ function startMatch(words) {
   $('#st-face').classList.add('top');
 
   const rows = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < words.length; i++) {
     rows.push(cell(left[i], 'de', display(left[i])));
     rows.push(cell(right[i], 'en', right[i].en));
   }
@@ -1836,13 +1865,20 @@ function showCard() {
     renderHome();
     return;
   }
-  // the opening pairing round covers the first five cards
+  // Pairing rounds: one to open the session, then every MATCH_EVERY cards
+  // while there are still lightly-seen words ahead to build one from.
+  let round = null;
   if (ST.matchRound && ST.i === 0) {
-    const round = ST.matchRound;
+    round = ST.matchRound;
     ST.matchRound = null;
+  } else if (ST.i > 0 && ST.i % CFG.MATCH_EVERY === 0 &&
+             ST.queue.length - ST.i > CFG.MATCH_PAIRS + 2) {
+    round = stageMatchRound();
+  }
+  if (round) {
     ST.mode = 'match';
-    $('#st-count').textContent = `1 / ${ST.queue.length}`;
-    $('#st-meter').style.width = '0%';
+    $('#st-count').textContent = `${ST.i + 1} / ${ST.queue.length}`;
+    $('#st-meter').style.width = (ST.i / ST.queue.length * 100) + '%';
     setTint(round[0].level.replace('*', ''));
     startMatch(round);
     return;
@@ -1974,7 +2010,14 @@ function requeueIfSoon(w, st) {
   const seen = ST.again.get(w.id) || 0;
   if (seen >= CFG.MAX_REENTRY) return;
   ST.again.set(w.id, seen + 1);
-  ST.queue.push(w);
+
+  // Where the cursor will be once this answer is finished. A pairing round
+  // settles several words before advancing, so it has to be accounted for or
+  // the card lands behind the cursor and is silently never shown.
+  const base = (MT.words ? ST.i + MT.words.length : ST.i + 1);
+  const gap = CFG.REENTRY_GAPS[Math.min(seen, CFG.REENTRY_GAPS.length - 1)];
+  const at = Math.min(base + gap, ST.queue.length);
+  ST.queue.splice(at, 0, w);
 }
 
 /** Grade one word without advancing the card cursor — the pairing round
@@ -2569,7 +2612,7 @@ window.__wm = {
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
-  wordStrength, weekStart, weekProgress,
+  wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
   advanceStreak, daysBetween, heatSeries, renderHeat,
