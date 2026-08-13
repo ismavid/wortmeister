@@ -348,6 +348,61 @@ function A_extendedSample(w){
   ok('scope excludes B2-extended by default',
     !M.inScope(A_extendedSample(w)), 'tier check');
 
+  // ------------------------------------------- exam-relevance ordering
+  // New words are drawn strictly in priority-rank order, and that rank is
+  // what makes the queue exam-relevant: official Goethe vocabulary first,
+  // frequency-ordered inside it. These lock the property in place — the
+  // order decides which words he actually reaches before 11 November, and
+  // a regression here is invisible until it has already cost him weeks.
+  console.log('\n== exam-relevance ordering ==');
+  {
+    const scope = M.A.words.filter(x => M.inScope(x));
+    const official = x => x.level.replace('*', '') !== 'B2';
+
+    ok('in-scope set is the core study set',
+      scope.length > 6500 && scope.length < 7500, scope.length);
+
+    // id === priority rank - 1, so ascending ids IS descending priority
+    const un = M.untriaged();
+    let ascending = true;
+    for (let n = 1; n < un.length; n++) if (un[n].id < un[n - 1].id) ascending = false;
+    ok('untriaged words are offered in priority-rank order', ascending);
+
+    // queuedNew() sorts uncertain-first, then rank — check the rank half
+    const saved = new Map(M.A.state);
+    const pick = [scope[900], scope[40], scope[500]];
+    for (const x of pick) M.A.state.set(x.id, Object.assign(M.newState(), { s: 'queued' }));
+    const qn = M.queuedNew().filter(x => pick.some(p => p.id === x.id));
+    ok('queued new words come back in priority-rank order',
+      qn.length === 3 && qn[0].id < qn[1].id && qn[1].id < qn[2].id,
+      qn.map(x => x.id).join(','));
+    M.A.state.clear();
+    for (const [k, v] of saved) M.A.state.set(k, v);
+
+    // the official Goethe Wortlisten are the only published statement of
+    // what the exam tests, so they must dominate the reachable front
+    const first800 = scope.slice(0, 800).filter(official).length;
+    ok('the first 800 new words are all official Goethe vocabulary',
+      first800 === 800, first800 + '/800');
+    const first2400 = scope.slice(0, 2400).filter(official).length;
+    ok('the first 2400 are overwhelmingly official Goethe vocabulary',
+      first2400 / 2400 >= 0.85, Math.round(first2400 / 2400 * 100) + '%');
+
+    // and frequency has to dominate inside that, or the front fills with
+    // list words nobody meets
+    const med = list => {
+      const f = list.map(x => x.freqClass).sort((a, b) => a - b);
+      return f[f.length >> 1];
+    };
+    ok('early words are more frequent than later ones',
+      med(scope.slice(0, 800)) < med(scope.slice(3200, 4000)),
+      med(scope.slice(0, 800)) + ' vs ' + med(scope.slice(3200, 4000)));
+
+    // B2 is corpus-derived, so the rare tail is newspaper vocabulary
+    ok('no rare B2 word reaches the default scope',
+      !scope.some(x => x.level.replace('*', '') === 'B2' && x.freqClass > 13));
+  }
+
   // ------------------------------------------------------- interval fuzz
   console.log('\n== interval fuzz ==');
   M.CFG.FUZZ = 1;

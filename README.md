@@ -230,6 +230,41 @@ strictly in that order. Frequency dominates; four corrections adjust it:
 - **Cognate penalty** up to −10 — `Dokumentation` → documentation is free to
   read, so drilling it wastes a slot
 
+### What that order actually delivers
+
+Measured over the 7,035 in-scope words, in the order they are offered:
+
+| Rank | Official Goethe A1–B1 | Median frequency class |
+|---|---|---|
+| 1–800 | 100% | 9 |
+| 801–1600 | 97% | 11 |
+| 1601–2400 | 85% | 12 |
+| 2401–3200 | 43% | 11 |
+| 4001+ | ~10% | 13 |
+
+Official Goethe vocabulary first, frequency-ordered inside it. Seven
+assertions lock this in place, because the order decides which words you
+reach before 11 November and a regression there is invisible until it has
+already cost weeks.
+
+Two re-weightings were tried and **rejected on measurement**:
+
+- **Boosting B2** (it is the exam being sat) trades `hell`, `müde`, `Bier`,
+  `grau` for `hessisch`, `Fraktion`, `Bundesregierung`. DeReWo is a press
+  corpus, so B2 frequency ranks journalese above everyday words the exam
+  actually uses. The official-list bonus exists precisely to correct that.
+- **Boosting the official list** (+8 → +20) trades `Unternehmen`,
+  `bezeichnen`, `erscheinen`, `treten` for `putzen`, `Mantel`, `ausruhen`.
+  Worse for B2.
+
+The current weighting sits between those two failure modes. Demoting the
+54 detectable corpus artefacts (`hessisch`, `Bundestrainer`, `Parteitag`)
+moves only 4 words inside a realistic budget, which is not worth a regex.
+
+The binding constraint is not order, it is **budget**: at 15–30 new words a
+day you reach 41–75% of the official list before the exam. Nothing reorders
+its way out of that.
+
 ---
 
 ## Files
@@ -271,7 +306,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-473 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+480 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
