@@ -40,7 +40,20 @@ mode. Back up occasionally anyway (Settings → Back up).
 Target ~1 s per word. Study stays disabled until you have sorted at least some
 words, because starting earlier fills the queue with words you already know.
 
-The interface is in English; only the vocabulary itself is German.
+The interface is in English or Spanish; only the vocabulary itself is German.
+
+### Interface language
+
+**Settings → Language** switches the whole interface between English and
+Español. It is a display setting: it writes one field and redraws the screen,
+and touches no review record — switch mid-session, switch back, nothing moves.
+
+**Word meanings stay in English in both.** The vocabulary carries exactly one
+gloss per word and that gloss is English, so a Spanish interface would be
+lying if the cards claimed otherwise. `der Betrieb` still reads
+*operation, business* on the back. Translating 10,390 glosses is a data job,
+not a UI one — it would need a new file keyed by the existing ids, the same
+way the sentence bank works.
 
 **After that — daily.** Home shows one action and nothing else: Study when
 cards are waiting, Sort when they are not. Every number lives under Stats, so
@@ -306,7 +319,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-480 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+498 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

@@ -313,7 +313,15 @@ function A_extendedSample(w){
   M.applyGrade(st6, M.G.GOOD, Date.now());
   const cap = M.daysToExam();
   ok('interval capped at days-to-exam', st6.i === cap, st6.i + ' vs cap ' + cap);
-  ok('cap matches 11 Nov 2026', cap > 80 && cap < 100, cap);
+  // Derived from the configured date, not a hardcoded window. This assertion
+  // used to read `cap > 80 && cap < 100`, which silently rotted into a failure
+  // as the exam got closer — a test that expires is worse than no test.
+  {
+    const days = Math.max(1, Math.ceil(
+      (new Date(M.A.set.exam + 'T09:00:00').getTime() - Date.now()) / 86400000));
+    ok('cap tracks the configured exam date', cap === days, cap + ' vs ' + days);
+    ok('exam is still ahead of us', cap > 1, cap);
+  }
 
   // leech
   let st7 = M.newState(); st7.s = 'review'; st7.l = 7; st7.i = 10;
@@ -347,6 +355,70 @@ function A_extendedSample(w){
     M.autoNewTarget() >= 10 && M.autoNewTarget() <= 60, M.autoNewTarget());
   ok('scope excludes B2-extended by default',
     !M.inScope(A_extendedSample(w)), 'tier check');
+
+  // ------------------------------------------------------------ language
+  // The toggle is a display setting. It must translate the whole shell, leave
+  // the German vocabulary and the English glosses alone, and never so much as
+  // read a review record.
+  console.log('\n== language ==');
+  {
+    const doc = w.document;
+    ok('defaults to English', M.lang() === 'en', M.lang());
+    ok('an install with no stored lang still reads English',
+      (() => { const keep = M.A.set.lang; delete M.A.set.lang;
+        const r = M.lang(); M.A.set.lang = keep; return r === 'en'; })());
+
+    // every key in English has a Spanish counterpart, or a screen ships half
+    // translated with silent English fallbacks
+    const miss = Object.keys(M.I18N.en).filter(k => !(k in M.I18N.es));
+    ok('every English key has a Spanish translation', miss.length === 0,
+      miss.slice(0, 6).join(', '));
+    const extra = Object.keys(M.I18N.es).filter(k => !(k in M.I18N.en));
+    ok('no orphan Spanish keys', extra.length === 0, extra.slice(0, 6).join(', '));
+
+    // an unknown key must degrade to English, never to blank
+    ok('unknown keys fall back rather than blanking',
+      M.T('no.such.key') === 'no.such.key');
+
+    const before = doc.querySelector('[data-i18n="set.title"]').textContent;
+    const stateBefore = JSON.stringify(Array.from(M.A.state.entries()));
+    const nState = M.A.state.size;
+
+    M.A.set.lang = 'es';
+    M.applyI18n();
+    ok('switching translates the shell',
+      doc.querySelector('[data-i18n="set.title"]').textContent === 'Ajustes',
+      doc.querySelector('[data-i18n="set.title"]').textContent);
+    ok('the document language attribute follows',
+      doc.documentElement.lang === 'es');
+    ok('placeholders translate',
+      doc.getElementById('br-q').placeholder === 'Buscar en alemán o inglés');
+    ok('aria-labels translate',
+      doc.getElementById('st-input').getAttribute('aria-label')
+        === 'Escribe la palabra en alemán');
+    // the grade buttons carry a <small> the app writes interval previews into
+    const again = doc.querySelector('[data-grade="0"]');
+    ok('grade buttons translate without losing the interval preview',
+      again.textContent.startsWith('Otra vez') && again.querySelector('#i0'),
+      again.innerHTML);
+    ok('mode pills translate', M.modeLabel('article') === 'Artículo');
+    ok('numbers follow the locale', M.nfmt(1234) === '1.234', M.nfmt(1234));
+
+    // the whole point: the vocabulary is untouched
+    const sample = M.A.words[500];
+    ok('German lemmas are never translated', sample.lemma === 'informieren');
+    ok('glosses stay English', /to inform/.test(sample.en));
+
+    // and so is progress
+    ok('no review record changed',
+      JSON.stringify(Array.from(M.A.state.entries())) === stateBefore);
+    ok('no review record was added or removed', M.A.state.size === nState);
+
+    M.A.set.lang = 'en';
+    M.applyI18n();
+    ok('switching back restores English',
+      doc.querySelector('[data-i18n="set.title"]').textContent === before);
+  }
 
   // ------------------------------------------- exam-relevance ordering
   // New words are drawn strictly in priority-rank order, and that rank is

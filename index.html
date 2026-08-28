@@ -384,6 +384,11 @@ select{appearance:none;-webkit-appearance:none}
 .check:last-child{border-bottom:0}
 .check input{width:21px;height:21px;accent-color:var(--blue)}
 .check span{flex:1;font-size:16px}
+.seg{display:flex;gap:5px;background:var(--glass-2);border-radius:13px;padding:4px;margin:12px 0 0}
+.seg button{flex:1;min-height:44px;padding:11px 0;border:0;border-radius:10px;cursor:pointer;
+  background:none;color:var(--dim);font-family:var(--font);font-size:15px;font-weight:600;
+  transition:background .18s ease,color .18s ease}
+.seg button.on{background:var(--blue);color:#fff}
 .toast{position:fixed;left:50%;bottom:calc(108px + env(safe-area-inset-bottom));
   transform:translateX(-50%);background:rgba(40,44,52,.7);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
@@ -438,7 +443,7 @@ select{appearance:none;-webkit-appearance:none}
 </head>
 <body>
 
-<div id="splash" class="splash"><div class="spin"></div><div id="splashmsg">Loading vocabulary…</div></div>
+<div id="splash" class="splash"><div class="spin"></div><div id="splashmsg" data-i18n="loading">Loading vocabulary…</div></div>
 
 <div id="app">
   <div id="ambient"><i></i><i></i><i></i></div>
@@ -455,7 +460,7 @@ select{appearance:none;-webkit-appearance:none}
         </svg>
         <b id="ringpct">0</b>
       </div>
-      <div id="ringsub" class="ringsub">not started yet</div>
+      <div id="ringsub" class="ringsub" data-i18n="home.notStarted">not started yet</div>
 
       <!-- the long arc, against a target estimated from your own sorting -->
       <div id="milestone" class="milestone"></div>
@@ -470,25 +475,25 @@ select{appearance:none;-webkit-appearance:none}
   <!-- ============ SORT (triage) ============ -->
   <section id="v-triage" class="view">
     <div class="bar">
-      <button class="iconbtn" data-go="home" aria-label="Close">✕</button>
+      <button class="iconbtn" data-go="home" aria-label="Close" data-i18n-al="st.close">✕</button>
       <div class="meter"><i id="tg-meter" style="width:0"></i></div>
       <span id="tg-count" class="sub"></span>
     </div>
     <div class="stage">
       <div class="face" id="tg-face">
         <div class="meta"><span id="tg-fach" class="pill tag"></span></div>
-        <div class="swipetag no" id="tg-no">Learn it</div>
-        <div class="swipetag yes" id="tg-yes">I know it</div>
+        <div class="swipetag no" id="tg-no" data-i18n="tg.learn">Learn it</div>
+        <div class="swipetag yes" id="tg-yes" data-i18n="tg.know">I know it</div>
         <div class="word" id="tg-word"></div>
-        <div class="hint">Do you already know this word?</div>
+        <div class="hint" data-i18n="tg.question">Do you already know this word?</div>
       </div>
       <div class="pad">
         <div class="g3">
-          <button class="gbtn again" data-tg="learn">Learn it<small>don't know it</small></button>
-          <button class="gbtn hard" data-tg="unsure">Not sure<small>maybe</small></button>
-          <button class="gbtn know" data-tg="know">I know it<small>never ask again</small></button>
+          <button class="gbtn again" data-tg="learn" data-i18n-lead="tg.learn">Learn it<small data-i18n="tg.learnSub">don't know it</small></button>
+          <button class="gbtn hard" data-tg="unsure" data-i18n-lead="tg.unsure">Not sure<small data-i18n="tg.unsureSub">maybe</small></button>
+          <button class="gbtn know" data-tg="know" data-i18n-lead="tg.know">I know it<small data-i18n="tg.knowSub">never ask again</small></button>
         </div>
-        <button class="btn ghost sm" data-tg="undo">Undo last</button>
+        <button class="btn ghost sm" data-tg="undo" data-i18n="tg.undo">Undo last</button>
       </div>
     </div>
   </section>
@@ -496,11 +501,11 @@ select{appearance:none;-webkit-appearance:none}
   <!-- ============ STUDY ============ -->
   <section id="v-study" class="view">
     <div class="bar">
-      <button class="iconbtn" data-go="home" aria-label="Close">✕</button>
+      <button class="iconbtn" data-go="home" aria-label="Close" data-i18n-al="st.close">✕</button>
       <div class="meter"><i id="st-meter" style="width:0"></i></div>
       <span id="st-count" class="sub"></span>
     </div>
-    <h1 id="st-title" class="hidden">Study</h1>
+    <h1 id="st-title" class="hidden" data-i18n="st.title">Study</h1>
     <div class="stage">
       <div class="face" id="st-face">
         <div class="meta"><span id="st-mode" class="pill tag"></span></div>
@@ -508,29 +513,30 @@ select{appearance:none;-webkit-appearance:none}
         <div class="mask hidden" id="st-mask"></div>
         <div class="answer hidden" id="st-answer"></div>
         <div class="gram hidden" id="st-gram"></div>
-        <div class="hint" id="st-hint">Tap to reveal</div>
+        <div class="hint" id="st-hint" data-i18n="st.tapReveal">Tap to reveal</div>
       </div>
 
       <!-- flip modes: reveal, then rate -->
       <div class="pad" id="st-pad">
-        <button class="btn" id="st-reveal">Show answer</button>
+        <button class="btn" id="st-reveal" data-i18n="st.showAnswer">Show answer</button>
       </div>
       <div class="pad hidden" id="st-grades">
         <div class="g4">
-          <button class="gbtn again" data-grade="0">Again<small id="i0"></small></button>
-          <button class="gbtn hard"  data-grade="1">Hard<small id="i1"></small></button>
-          <button class="gbtn good"  data-grade="2">Good<small id="i2"></small></button>
-          <button class="gbtn easy"  data-grade="3">Easy<small id="i3"></small></button>
+          <button class="gbtn again" data-grade="0" data-i18n-lead="st.again">Again<small id="i0"></small></button>
+          <button class="gbtn hard"  data-grade="1" data-i18n-lead="st.hard">Hard<small id="i1"></small></button>
+          <button class="gbtn good"  data-grade="2" data-i18n-lead="st.good">Good<small id="i2"></small></button>
+          <button class="gbtn easy"  data-grade="3" data-i18n-lead="st.easy">Easy<small id="i3"></small></button>
         </div>
-        <button class="btn ghost sm" data-grade="know">I know this — never ask again</button>
+        <button class="btn ghost sm" data-grade="know" data-i18n="st.knowNever">I know this — never ask again</button>
       </div>
 
       <!-- typing mode: write the German -->
       <div class="pad hidden" id="st-typepad">
         <input class="typein" id="st-input" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="done"
-               placeholder="Type the German" aria-label="Type the German word">
-        <button class="btn" id="st-check" disabled>Check</button>
+               placeholder="Type the German" data-i18n-ph="st.typeGerman"
+               aria-label="Type the German word" data-i18n-al="st.typeGermanAria">
+        <button class="btn" id="st-check" disabled data-i18n="st.check">Check</button>
       </div>
 
       <!-- article drill: der / die / das, each with its constant shape -->
@@ -551,15 +557,15 @@ select{appearance:none;-webkit-appearance:none}
       <div class="pad hidden" id="st-verbpad">
         <input class="typein sm" id="st-vprt" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="next"
-               placeholder="Präteritum" aria-label="Präteritum (simple past)">
+               placeholder="Präteritum" aria-label="Präteritum (simple past)" data-i18n-al="st.prt">
         <input class="typein sm" id="st-vpp" type="text" autocomplete="off" autocorrect="off"
                autocapitalize="off" spellcheck="false" enterkeyhint="done"
-               placeholder="Partizip II" aria-label="Partizip II (past participle)">
+               placeholder="Partizip II" aria-label="Partizip II (past participle)" data-i18n-al="st.pp">
         <div class="g2">
           <button class="gbtn auxbtn" data-aux="haben">haben</button>
           <button class="gbtn auxbtn" data-aux="sein">sein</button>
         </div>
-        <button class="btn" id="st-vcheck" disabled>Check</button>
+        <button class="btn" id="st-vcheck" disabled data-i18n="st.check">Check</button>
       </div>
 
       <!-- cloze: which word fits the sentence -->
@@ -573,8 +579,8 @@ select{appearance:none;-webkit-appearance:none}
       </div>
       <div class="pad hidden" id="st-casepad">
         <div class="g2">
-          <button class="gbtn pbtn" data-case="Dativ">Dative</button>
-          <button class="gbtn pbtn" data-case="Akkusativ">Accusative</button>
+          <button class="gbtn pbtn" data-case="Dativ" data-i18n="st.dative">Dative</button>
+          <button class="gbtn pbtn" data-case="Akkusativ" data-i18n="st.accusative">Accusative</button>
         </div>
       </div>
 
@@ -584,30 +590,30 @@ select{appearance:none;-webkit-appearance:none}
           <div class="ricon" id="st-ricon">✓</div>
           <div class="rtext"><b id="st-rtitle"></b><span id="st-rbody"></span></div>
         </div>
-        <button class="btn" id="st-continue">Continue</button>
+        <button class="btn" id="st-continue" data-i18n="st.continue">Continue</button>
       </div>
 
       <!-- end of session -->
       <div class="pad hidden" id="st-donepad">
-        <button class="btn" data-go="home">Back to home</button>
+        <button class="btn" data-go="home" data-i18n="st.backHome">Back to home</button>
       </div>
     </div>
   </section>
 
   <!-- ============ WORDS ============ -->
   <section id="v-browse" class="view">
-    <div class="bar lg"><h1>Words</h1><span id="br-count" class="sub"></span></div>
+    <div class="bar lg"><h1 data-i18n="br.title">Words</h1><span id="br-count" class="sub"></span></div>
     <div class="scroll">
-      <input class="search" id="br-q" placeholder="Search German or English" autocomplete="off" autocapitalize="off">
+      <input class="search" id="br-q" placeholder="Search German or English" data-i18n-ph="br.search" autocomplete="off" autocapitalize="off">
       <div class="row" style="margin-bottom:6px">
-        <select id="br-lvl"><option value="">All levels</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select>
+        <select id="br-lvl"><option value="" data-i18n="br.allLevels">All levels</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select>
         <select id="br-state">
-          <option value="">All words</option><option value="new">Not sorted</option>
-          <option value="learning">Learning</option><option value="review">In review</option>
-          <option value="known">Known</option><option value="leech">Difficult</option>
+          <option value="" data-i18n="br.allWords">All words</option><option value="new" data-i18n="br.notSorted">Not sorted</option>
+          <option value="learning" data-i18n="br.learning">Learning</option><option value="review" data-i18n="br.inReview">In review</option>
+          <option value="known" data-i18n="br.known">Known</option><option value="leech" data-i18n="br.difficult">Difficult</option>
         </select>
       </div>
-      <p class="sub" style="margin:8px 0 2px">Tap to mark known · tap again to undo</p>
+      <p class="sub" style="margin:8px 0 2px" data-i18n="br.tapHint">Tap to mark known · tap again to undo</p>
       <div id="br-list"></div>
     </div>
     <nav class="nav"></nav>
@@ -615,28 +621,28 @@ select{appearance:none;-webkit-appearance:none}
 
   <!-- ============ STATS ============ -->
   <section id="v-stats" class="view">
-    <div class="bar lg"><h1>Stats</h1></div>
+    <div class="bar lg"><h1 data-i18n="stats.title">Stats</h1></div>
     <div class="scroll">
-      <h2>Today</h2>
+      <h2 data-i18n="stats.today">Today</h2>
       <div class="card">
-        <div class="stat"><span>Due</span><b id="s-due">0</b></div>
-        <div class="stat"><span>New words</span><b id="s-new">0</b></div>
-        <div class="stat"><span>Left to sort</span><b id="s-triage">0</b></div>
+        <div class="stat"><span data-i18n="stats.due">Due</span><b id="s-due">0</b></div>
+        <div class="stat"><span data-i18n="stats.newWords">New words</span><b id="s-new">0</b></div>
+        <div class="stat"><span data-i18n="stats.leftToSort">Left to sort</span><b id="s-triage">0</b></div>
       </div>
 
-      <h2>Consistency</h2>
+      <h2 data-i18n="stats.consistency">Consistency</h2>
       <div id="heat"></div>
       <div class="card">
-        <div class="stat"><span>Streak</span><b id="s-streak">0 days</b></div>
-        <div class="stat"><span>Streak freezes banked</span><b id="s-freeze">0</b></div>
+        <div class="stat"><span data-i18n="stats.streak">Streak</span><b id="s-streak">0 days</b></div>
+        <div class="stat"><span data-i18n="stats.freezes">Streak freezes banked</span><b id="s-freeze">0</b></div>
       </div>
 
-      <h2>Pace</h2>
+      <h2 data-i18n="stats.pace">Pace</h2>
       <div id="pace"></div>
       <div class="card">
-        <div class="stat"><span>Needed per day</span><b id="s-need">–</b></div>
-        <div class="stat"><span>Your average</span><b id="s-actual">–</b></div>
-        <div class="stat"><span>Status</span><b id="s-track">–</b></div>
+        <div class="stat"><span data-i18n="stats.needed">Needed per day</span><b id="s-need">–</b></div>
+        <div class="stat"><span data-i18n="stats.yourAvg">Your average</span><b id="s-actual">–</b></div>
+        <div class="stat"><span data-i18n="stats.status">Status</span><b id="s-track">–</b></div>
       </div>
 
       <div id="stats-body"></div>
@@ -646,43 +652,54 @@ select{appearance:none;-webkit-appearance:none}
 
   <!-- ============ SETTINGS ============ -->
   <section id="v-settings" class="view">
-    <div class="bar lg"><h1>Settings</h1></div>
+    <div class="bar lg"><h1 data-i18n="set.title">Settings</h1></div>
     <div class="scroll">
       <div id="installcard"></div>
 
-      <h2>Exam</h2>
+      <h2 data-i18n="set.exam">Exam</h2>
       <div class="card">
-        <label for="set-exam">Exam date</label>
+        <label for="set-exam" data-i18n="set.examDate">Exam date</label>
         <input type="date" id="set-exam">
-        <label for="set-new">New words per day (0 = work it out for me)</label>
+        <label for="set-new" data-i18n="set.newPerDay">New words per day (0 = work it out for me)</label>
         <input type="number" id="set-new" min="0" max="200" step="5">
-        <label for="set-max">Maximum reviews per day</label>
+        <label for="set-max" data-i18n="set.maxReviews">Maximum reviews per day</label>
         <input type="number" id="set-max" min="20" max="600" step="10">
       </div>
 
-      <h2>Voice</h2>
+      <h2 data-i18n="set.voice">Voice</h2>
       <div class="card">
         <label class="check"><input type="checkbox" id="set-speak">
-          <span>Read answers aloud</span></label>
-        <p class="sub" style="margin:10px 0 14px">German answers are read in
+          <span data-i18n="set.readAloud">Read answers aloud</span></label>
+        <p class="sub" style="margin:10px 0 14px" data-i18n="set.voiceSub">German answers are read in
           German, English answers in English. Tap a revealed answer to hear it
           again.</p>
       </div>
 
-      <h2>What to study</h2>
+      <h2 data-i18n="set.language">Language</h2>
+      <div class="card">
+        <div class="seg" id="set-lang">
+          <button type="button" data-lang="en">English</button>
+          <button type="button" data-lang="es">Español</button>
+        </div>
+        <p class="sub" style="margin:10px 0 14px" data-i18n="set.languageSub">Interface
+          language only. Word meanings stay in English — that is the only gloss
+          the vocabulary data carries.</p>
+      </div>
+
+      <h2 data-i18n="set.whatToStudy">What to study</h2>
       <div class="card" id="scope"></div>
 
-      <h2>Data</h2>
+      <h2 data-i18n="set.data">Data</h2>
       <div class="card">
-        <p class="sub" style="margin:14px 0">
+        <p class="sub" style="margin:14px 0" data-i18n="set.dataSub">
           Safari deletes website data after 7 days. Apps added to the Home Screen are
           exempt — but back up regularly anyway.
         </p>
         <div class="row" style="margin-bottom:9px">
-          <button class="btn ghost sm" id="btn-export">Back up</button>
-          <button class="btn ghost sm" id="btn-import">Restore</button>
+          <button class="btn ghost sm" id="btn-export" data-i18n="set.backup">Back up</button>
+          <button class="btn ghost sm" id="btn-import" data-i18n="set.restore">Restore</button>
         </div>
-        <button class="btn ghost sm" id="btn-reset">Reset everything</button>
+        <button class="btn ghost sm" id="btn-reset" data-i18n="set.reset">Reset everything</button>
         <input type="file" id="file-import" accept="application/json" class="hidden">
       </div>
       <p class="sub" style="text-align:center;margin-top:26px" id="ver"></p>

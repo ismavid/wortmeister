@@ -22,12 +22,31 @@ changes. Phases 1, 2 and 3 are all shipped.
 4. **Safari deletes all script-writable storage after 7 days** for sites not
    installed to the Home Screen. Never move state to `localStorage` alone,
    never remove the install prompt, never remove backup/restore.
-5. **UI language is English.** Only the vocabulary itself is German. This
-   reverses the original rule (German UI at B1→B2, so the interface doubled as
-   practice) — Ismael asked for English on 9 Aug 2026 because an interface you
-   have to decode gets in the way of the drill it is wrapping. Do not "restore"
-   the German UI. Grammar terms that English textbooks keep in German
-   (`Präteritum`, `Partizip II`, `der/die/das`) stay as they are.
+5. **UI language is English by default, Spanish by toggle. Never German.**
+   Only the vocabulary itself is German. The original rule was a German UI at
+   B1→B2 so the interface doubled as practice; Ismael asked for English on
+   9 Aug 2026 because an interface you have to decode gets in the way of the
+   drill it wraps. Do not "restore" the German UI. Grammar terms that
+   textbooks keep in German (`Präteritum`, `Partizip II`, `der/die/das`) stay
+   as they are.
+
+   Spanish was added 28 Aug 2026 (Ismael's first language). Rules:
+   - Every user-facing string goes through `T(key)`. No bare literals in
+     render code — the suite asserts English and Spanish have identical key
+     sets, so an untranslated key fails rather than silently falling back.
+   - Static shell text is marked in `index.html` with `data-i18n`,
+     `data-i18n-html`, `data-i18n-ph` (placeholder), `data-i18n-al`
+     (aria-label), or `data-i18n-lead`. **Use `data-i18n-lead` for any
+     element whose label is a bare text node followed by children the app
+     writes into** — the grade buttons hold `<small id="i0">…</small>` for
+     the interval previews, and `textContent` would delete them.
+   - `lang` is a settings field defaulting to `'en'`. Boot never writes
+     settings, so an existing install picks up the default without its stored
+     record being rewritten.
+   - **Word meanings stay English.** The `en` column is the only gloss the
+     data carries. Do not fake Spanish glosses, and do not let the toggle
+     imply the cards were translated — Settings says so explicitly.
+   - Numbers and dates follow `loc()`, not a hardcoded `'en'`/`'en-GB'`.
 6. **Dark theme, mobile-first.** Minimum tap target 48px. Controls live in the
    thumb-reachable bottom third. Test at 375px wide.
 7. **Never write a review record for a deleted word.** `flush()` skips ids
@@ -73,7 +92,7 @@ sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
-test/test_app.js        480 assertions, jsdom + fake-indexeddb
+test/test_app.js        498 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -144,7 +163,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 480 passed, then 22 passed
+cd test && npm install && npm test     # expect: 498 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

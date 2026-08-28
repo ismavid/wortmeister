@@ -39,7 +39,7 @@ const CFG = {
   defaults: {
     exam: '2026-11-11', newPerDay: 0, maxReviews: 250,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
-    streak: 0, lastDay: null, history: {}, medians: {}, speak: false
+    streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en'
   }
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
@@ -58,6 +58,368 @@ const HINT_MAX = HINT_SHARE.length - 1;
 /* Gender gets a constant shape because colour is already spoken for by the
    CEFR ambient. One silent, repeated cue across ~5,700 nouns. */
 const GENDER_SHAPE = { der: '▲', die: '●', das: '■' };
+
+/* ============================ language ============================
+   The interface speaks English or Spanish; the vocabulary does not. Word
+   meanings stay English because `en` is the only gloss the data carries, so
+   switching language must never imply the cards themselves were translated.
+
+   `lang` is a settings field defaulting to 'en', so an existing install reads
+   as English without its stored settings being rewritten — boot never saves,
+   and review records live in a different store entirely. Nothing here can
+   touch progress. */
+const I18N = {
+  en: {
+    'loading': 'Loading vocabulary…',
+    'err.title': 'Could not load the app',
+    'err.load': 'Check your connection and reload',
+
+    'nav.home': 'Home', 'nav.browse': 'Words',
+    'nav.stats': 'Stats', 'nav.settings': 'Settings',
+
+    'home.notStarted': 'not started yet',
+    'home.doneToday': 'done for today',
+    'home.ofToday': 'of {n} today',
+    'home.countdown': '{n} days until the exam',
+    'home.startSorting': 'Start sorting',
+    'home.sortMore': 'Sort {n} more',
+    'home.study': 'Study — {n} cards',
+    'home.sortWords': 'Sort words — {n} left',
+    'home.nothingDue': 'Nothing due today',
+
+    'guide.title': 'Start by sorting your words',
+    'guide.1': 'Each word appears once. Mark the ones you already know so they never enter your study queue.',
+    'guide.2': 'Aim for about a second per word — swipe right if you know it, left to learn it.',
+    'guide.3': 'Sort the A1–B1 words before you start studying, or the queue fills up with words you already know.',
+
+    'install.title': 'Add this to your Home Screen',
+    'install.body': 'Safari deletes all data for this site after 7 days. Added to the Home Screen, it runs as an app and your progress survives.',
+    'install.share': 'Share ⍋ → “Add to Home Screen”.',
+    'install.ok': '✓ Installed as an app',
+    'install.okBody': 'Your progress is safe from the 7-day data purge in Safari.',
+
+    'ms.week': '<b>{done}</b> of {target} this week',
+    'ms.lastDay': 'last day',
+    'ms.dayLeft': '{n} day left',
+    'ms.daysLeft': '{n} days left',
+    'ms.mastered': '<b>{n}</b> mastered',
+    'ms.learning': '<b>{n}</b> learning',
+    'ms.toGo': '{n} to go',
+    'ms.est': ' (est.)',
+
+    'tg.question': 'Do you already know this word?',
+    'tg.learn': 'Learn it', 'tg.learnSub': 'do not know it',
+    'tg.unsure': 'Not sure', 'tg.unsureSub': 'maybe',
+    'tg.know': 'I know it', 'tg.knowSub': 'never ask again',
+    'tg.undo': 'Undo last', 'tg.technical': 'Technical',
+
+    'st.title': 'Study',
+    'st.tapReveal': 'Tap to reveal',
+    'st.showAnswer': 'Show answer',
+    'st.again': 'Again', 'st.hard': 'Hard', 'st.good': 'Good', 'st.easy': 'Easy',
+    'st.knowNever': 'I know this — never ask again',
+    'st.check': 'Check', 'st.continue': 'Continue', 'st.backHome': 'Back to home',
+    'st.typeGerman': 'Type the German',
+    'st.typeGermanAria': 'Type the German word',
+    'st.dative': 'Dative', 'st.accusative': 'Accusative',
+    'st.close': 'Close',
+    'st.prt': 'Präteritum (simple past)',
+    'st.pp': 'Partizip II (past participle)',
+    'st.correct': 'Correct', 'st.almost': 'Almost', 'st.notQuite': 'Not quite',
+    'st.fillRest': 'Fill in the rest',
+    'st.noHelp': 'No help left',
+    'st.noHelpArticle': 'No help left — include the article',
+    'st.includeArticle': 'Include the article',
+    'st.whichArticle': 'Which article?',
+    'st.whichCase': 'Which case does it take?',
+    'st.whichPrep': 'Which preposition?',
+    'st.whichWord': 'Which word fits?',
+    'st.matchPairs': 'Match the pairs',
+    'st.matchSub': 'tap a word, then its meaning',
+    'st.verbSub': 'Simple past, past participle, and haben or sein',
+    'st.answer': 'Answer: ', 'st.spelling': 'Spelling: ',
+    'st.youWrote': 'You wrote',
+    'st.youChose': 'You chose',
+    'st.prepWrongCase': 'Right preposition, wrong case<br>Answer: ',
+    'st.allDone': 'That is everything due today',
+    'st.comeBack': 'Come back tomorrow, or sort more words',
+
+    'mode.de2en': 'German → English', 'mode.en2de': 'English → German',
+    'mode.type': 'Type it', 'mode.article': 'Article', 'mode.verb': 'Verb forms',
+    'mode.rection': 'Preposition', 'mode.match': 'Match',
+    'mode.cloze': 'In a sentence', 'mode.hint': 'Fill it in',
+
+    'br.title': 'Words',
+    'br.search': 'Search German or English',
+    'br.allLevels': 'All levels', 'br.allWords': 'All words',
+    'br.notSorted': 'Not sorted', 'br.learning': 'Learning',
+    'br.inReview': 'In review', 'br.known': 'Known', 'br.difficult': 'Difficult',
+    'br.tapHint': 'Tap to mark known · tap again to undo',
+    'br.noMatch': 'No words match that',
+    'br.backQueue': 'Back in the queue — tap again to mark it known',
+    'br.markedKnown': 'Marked as known — tap again to undo',
+
+    'stats.title': 'Stats',
+    'stats.today': 'Today', 'stats.due': 'Due', 'stats.newWords': 'New words',
+    'stats.leftToSort': 'Left to sort',
+    'stats.consistency': 'Consistency', 'stats.streak': 'Streak',
+    'stats.freezes': 'Streak freezes banked',
+    'stats.pace': 'Pace', 'stats.needed': 'Needed per day',
+    'stats.yourAvg': 'Your average', 'stats.status': 'Status',
+    'stats.sortFirst': 'Sort first', 'stats.onTrack': 'On track',
+    'stats.behind': 'Behind',
+    'stats.where': 'Where your words are',
+    'stats.waiting': 'Sorted, waiting', 'stats.notSortedYet': 'Not sorted yet',
+    'stats.byExercise': 'By exercise',
+    'stats.willYouMakeIt': 'Will you make it',
+    'stats.retention': 'Answers you got right (30 days)',
+    'stats.knewRate': 'You already knew, of what you sorted',
+    'stats.target': 'Words you will need to learn',
+    'stats.masteredSoFar': 'Mastered so far', 'stats.stillLearning': 'Still learning',
+    'stats.thisWeek': 'This week', 'stats.leftToLearn': 'Words left to learn',
+    'stats.finishedBy': 'Finished by', 'stats.exam': 'Exam',
+    'stats.noData': 'not enough data yet',
+    'stats.leechTitle': 'Words that keep beating you',
+    'stats.leechSub': 'Wrong eight times, so they are paused. Tap one to start it over from the beginning.',
+    'stats.restart': 'restart', 'stats.restartAll': 'Restart all {n}',
+    'stats.backOne': '{n} word is back in the queue',
+    'stats.backMany': '{n} words are back in the queue',
+    'stats.startingOver': '{w} — starting over',
+    'stats.ofTarget': '{done} of {target}',
+
+    'set.title': 'Settings',
+    'set.exam': 'Exam', 'set.examDate': 'Exam date',
+    'set.newPerDay': 'New words per day (0 = work it out for me)',
+    'set.maxReviews': 'Maximum reviews per day',
+    'set.voice': 'Voice', 'set.readAloud': 'Read answers aloud',
+    'set.voiceSub': 'German answers are read in German, English answers in English. Tap a revealed answer to hear it again.',
+    'set.language': 'Language',
+    'set.languageSub': 'Interface language only. Word meanings stay in English — that is the only gloss the vocabulary data carries.',
+    'set.whatToStudy': 'What to study',
+    'set.data': 'Data',
+    'set.dataSub': 'Safari deletes website data after 7 days. Apps added to the Home Screen are exempt — but back up regularly anyway.',
+    'set.backup': 'Back up', 'set.restore': 'Restore',
+    'set.reset': 'Reset everything',
+    'set.words': '{n} words · data v1',
+    'set.sentences': 'Example sentences from Tatoeba (CC BY 2.0 FR)',
+
+    'toast.voiceOn': 'Answers will be read aloud',
+    'toast.voiceOff': 'Voice off',
+    'toast.scope': 'Scope updated',
+    'toast.backup': 'Backup saved to your downloads',
+    'toast.restored': 'Restored {n} words',
+    'toast.restoreFail': 'Could not restore — {e}',
+    'toast.reset': 'Everything reset',
+    'toast.lang': 'Interface language changed',
+    'confirm.reset': 'Delete all your progress? This cannot be undone. Back up first if you are not sure.',
+    'err.notBackup': 'that is not a Wortmeister backup',
+
+    'u.day': 'day', 'u.days': 'days',
+    'u.word': 'word', 'u.words': 'words',
+    'u.freeze': 'freeze', 'u.freezes': 'freezes',
+    'u.dow': 'Sun Mon Tue Wed Thu Fri Sat'
+  },
+
+  es: {
+    'loading': 'Cargando vocabulario…',
+    'err.title': 'No se pudo cargar la app',
+    'err.load': 'Revisa tu conexión y recarga',
+
+    'nav.home': 'Inicio', 'nav.browse': 'Palabras',
+    'nav.stats': 'Progreso', 'nav.settings': 'Ajustes',
+
+    'home.notStarted': 'aún sin empezar',
+    'home.doneToday': 'listo por hoy',
+    'home.ofToday': 'de {n} hoy',
+    'home.countdown': '{n} días para el examen',
+    'home.startSorting': 'Empezar a clasificar',
+    'home.sortMore': 'Clasificar {n} más',
+    'home.study': 'Estudiar — {n} tarjetas',
+    'home.sortWords': 'Clasificar — faltan {n}',
+    'home.nothingDue': 'Nada pendiente hoy',
+
+    'guide.title': 'Empieza clasificando tus palabras',
+    'guide.1': 'Cada palabra aparece una vez. Marca las que ya conoces para que nunca entren en tu cola de estudio.',
+    'guide.2': 'Apunta a un segundo por palabra: desliza a la derecha si la conoces, a la izquierda para aprenderla.',
+    'guide.3': 'Clasifica las palabras A1–B1 antes de empezar a estudiar, o la cola se llenará de palabras que ya conoces.',
+
+    'install.title': 'Añade esto a tu pantalla de inicio',
+    'install.body': 'Safari borra todos los datos de este sitio a los 7 días. Añadida a la pantalla de inicio funciona como app y tu progreso sobrevive.',
+    'install.share': 'Compartir ⍋ → “Añadir a pantalla de inicio”.',
+    'install.ok': '✓ Instalada como app',
+    'install.okBody': 'Tu progreso está a salvo del borrado de datos de Safari a los 7 días.',
+
+    'ms.week': '<b>{done}</b> de {target} esta semana',
+    'ms.lastDay': 'último día',
+    'ms.dayLeft': 'queda {n} día',
+    'ms.daysLeft': 'quedan {n} días',
+    'ms.mastered': '<b>{n}</b> dominadas',
+    'ms.learning': '<b>{n}</b> aprendiendo',
+    'ms.toGo': 'faltan {n}',
+    'ms.est': ' (aprox.)',
+
+    'tg.question': '¿Ya conoces esta palabra?',
+    'tg.learn': 'Aprenderla', 'tg.learnSub': 'no la conozco',
+    'tg.unsure': 'No estoy seguro', 'tg.unsureSub': 'tal vez',
+    'tg.know': 'La conozco', 'tg.knowSub': 'no preguntar más',
+    'tg.undo': 'Deshacer', 'tg.technical': 'Técnica',
+
+    'st.title': 'Estudiar',
+    'st.tapReveal': 'Toca para ver',
+    'st.showAnswer': 'Ver respuesta',
+    'st.again': 'Otra vez', 'st.hard': 'Difícil', 'st.good': 'Bien',
+    'st.easy': 'Fácil',
+    'st.knowNever': 'Ya la sé — no preguntar más',
+    'st.check': 'Comprobar', 'st.continue': 'Continuar',
+    'st.backHome': 'Volver al inicio',
+    'st.typeGerman': 'Escribe en alemán',
+    'st.typeGermanAria': 'Escribe la palabra en alemán',
+    'st.dative': 'Dativo', 'st.accusative': 'Acusativo',
+    'st.close': 'Cerrar',
+    'st.prt': 'Präteritum (pretérito)',
+    'st.pp': 'Partizip II (participio)',
+    'st.correct': 'Correcto', 'st.almost': 'Casi', 'st.notQuite': 'No exactamente',
+    'st.fillRest': 'Completa el resto',
+    'st.noHelp': 'Sin ayuda',
+    'st.noHelpArticle': 'Sin ayuda — incluye el artículo',
+    'st.includeArticle': 'Incluye el artículo',
+    'st.whichArticle': '¿Qué artículo?',
+    'st.whichCase': '¿Qué caso rige?',
+    'st.whichPrep': '¿Qué preposición?',
+    'st.whichWord': '¿Qué palabra encaja?',
+    'st.matchPairs': 'Une las parejas',
+    'st.matchSub': 'toca una palabra y luego su significado',
+    'st.verbSub': 'Pretérito, participio y haben o sein',
+    'st.answer': 'Respuesta: ', 'st.spelling': 'Ortografía: ',
+    'st.youWrote': 'Escribiste',
+    'st.youChose': 'Elegiste',
+    'st.prepWrongCase': 'Preposición correcta, caso incorrecto<br>Respuesta: ',
+    'st.allDone': 'Eso es todo lo pendiente de hoy',
+    'st.comeBack': 'Vuelve mañana, o clasifica más palabras',
+
+    'mode.de2en': 'Alemán → Inglés',
+    'mode.en2de': 'Inglés → Alemán',
+    'mode.type': 'Escríbela', 'mode.article': 'Artículo',
+    'mode.verb': 'Formas verbales',
+    'mode.rection': 'Preposición', 'mode.match': 'Parejas',
+    'mode.cloze': 'En una frase', 'mode.hint': 'Complétala',
+
+    'br.title': 'Palabras',
+    'br.search': 'Buscar en alemán o inglés',
+    'br.allLevels': 'Todos los niveles', 'br.allWords': 'Todas las palabras',
+    'br.notSorted': 'Sin clasificar', 'br.learning': 'Aprendiendo',
+    'br.inReview': 'En repaso', 'br.known': 'Conocidas',
+    'br.difficult': 'Difíciles',
+    'br.tapHint': 'Toca para marcar conocida · toca otra vez para deshacer',
+    'br.noMatch': 'Ninguna palabra coincide',
+    'br.backQueue': 'De vuelta en la cola — toca otra vez para marcarla conocida',
+    'br.markedKnown': 'Marcada como conocida — toca otra vez para deshacer',
+
+    'stats.title': 'Progreso',
+    'stats.today': 'Hoy', 'stats.due': 'Pendientes',
+    'stats.newWords': 'Palabras nuevas',
+    'stats.leftToSort': 'Por clasificar',
+    'stats.consistency': 'Constancia', 'stats.streak': 'Racha',
+    'stats.freezes': 'Congelaciones guardadas',
+    'stats.pace': 'Ritmo', 'stats.needed': 'Necesarias por día',
+    'stats.yourAvg': 'Tu promedio', 'stats.status': 'Estado',
+    'stats.sortFirst': 'Clasifica primero', 'stats.onTrack': 'Al día',
+    'stats.behind': 'Atrasado',
+    'stats.where': 'Dónde están tus palabras',
+    'stats.waiting': 'Clasificadas, en espera',
+    'stats.notSortedYet': 'Sin clasificar',
+    'stats.byExercise': 'Por ejercicio',
+    'stats.willYouMakeIt': '¿Vas a llegar?',
+    'stats.retention': 'Respuestas correctas (30 días)',
+    'stats.knewRate': 'Ya conocías, de lo que clasificaste',
+    'stats.target': 'Palabras que tendrás que aprender',
+    'stats.masteredSoFar': 'Dominadas hasta ahora',
+    'stats.stillLearning': 'Aún aprendiendo',
+    'stats.thisWeek': 'Esta semana',
+    'stats.leftToLearn': 'Palabras por aprender',
+    'stats.finishedBy': 'Terminarás el', 'stats.exam': 'Examen',
+    'stats.noData': 'aún sin datos suficientes',
+    'stats.leechTitle': 'Palabras que se te resisten',
+    'stats.leechSub': 'Falladas ocho veces, así que están pausadas. Toca una para empezarla desde el principio.',
+    'stats.restart': 'reiniciar', 'stats.restartAll': 'Reiniciar las {n}',
+    'stats.backOne': '{n} palabra volvió a la cola',
+    'stats.backMany': '{n} palabras volvieron a la cola',
+    'stats.startingOver': '{w} — empezando de nuevo',
+    'stats.ofTarget': '{done} de {target}',
+
+    'set.title': 'Ajustes',
+    'set.exam': 'Examen', 'set.examDate': 'Fecha del examen',
+    'set.newPerDay': 'Palabras nuevas por día (0 = calcúlalo por mí)',
+    'set.maxReviews': 'Máximo de repasos por día',
+    'set.voice': 'Voz', 'set.readAloud': 'Leer las respuestas en voz alta',
+    'set.voiceSub': 'Las respuestas en alemán se leen en alemán, y las respuestas en inglés en inglés. Toca una respuesta revelada para volver a escucharla.',
+    'set.language': 'Idioma',
+    'set.languageSub': 'Solo el idioma de la interfaz. Los significados siguen en inglés — es la única traducción que traen los datos del vocabulario.',
+    'set.whatToStudy': 'Qué estudiar',
+    'set.data': 'Datos',
+    'set.dataSub': 'Safari borra los datos del sitio a los 7 días. Las apps añadidas a la pantalla de inicio están exentas, pero haz copias de seguridad igual.',
+    'set.backup': 'Copia de seguridad', 'set.restore': 'Restaurar',
+    'set.reset': 'Borrar todo',
+    'set.words': '{n} palabras · datos v1',
+    'set.sentences': 'Frases de ejemplo de Tatoeba (CC BY 2.0 FR)',
+
+    'toast.voiceOn': 'Las respuestas se leerán en voz alta',
+    'toast.voiceOff': 'Voz desactivada',
+    'toast.scope': 'Alcance actualizado',
+    'toast.backup': 'Copia guardada en tus descargas',
+    'toast.restored': 'Se restauraron {n} palabras',
+    'toast.restoreFail': 'No se pudo restaurar — {e}',
+    'toast.reset': 'Todo borrado',
+    'toast.lang': 'Idioma de la interfaz cambiado',
+    'confirm.reset': '¿Borrar todo tu progreso? Esto no se puede deshacer. Haz una copia de seguridad primero si no estás seguro.',
+    'err.notBackup': 'eso no es una copia de Wortmeister',
+
+    'u.day': 'día', 'u.days': 'días',
+    'u.word': 'palabra', 'u.words': 'palabras',
+    'u.freeze': 'congelación', 'u.freezes': 'congelaciones',
+    'u.dow': 'Dom Lun Mar Mié Jue Vie Sáb'
+  }
+};
+const LANGS = ['en', 'es'];
+function lang() { return (A.set && I18N[A.set.lang]) ? A.set.lang : 'en'; }
+/** Number and date locale, so thousands separators and months follow suit. */
+function loc() { return lang() === 'es' ? 'es-CO' : 'en-GB'; }
+function nfmt(n) { return (n == null ? 0 : n).toLocaleString(loc()); }
+/** Translate. `{name}` placeholders are filled from `vars`. */
+function T(key, vars) {
+  const table = I18N[lang()] || I18N.en;
+  let s = table[key];
+  if (s == null) s = I18N.en[key];
+  if (s == null) return key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+/** "1 day" / "3 days", for the handful of counters that need it. */
+function plural(n, one, many) { return nfmt(n) + ' ' + T(n === 1 ? one : many); }
+/** Mode pill labels. MODE_LABEL stays the canonical key registry — Stats
+    derives its counters from its keys — and only the label is translated. */
+function modeLabel(k) { return T('mode.' + k); }
+/** Fill every statically-marked node in the shell. Called on boot and on each
+    language change; re-rendering the active view covers everything dynamic. */
+function applyI18n() {
+  document.documentElement.lang = lang();
+  $$('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+  $$('[data-i18n-html]').forEach(el => { el.innerHTML = T(el.dataset.i18nHtml); });
+  // Buttons whose label is a bare text node followed by a <small> the app
+  // writes into — the interval previews under Again/Hard/Good/Easy. Replacing
+  // textContent would delete that <small> and the previews with it.
+  $$('[data-i18n-lead]').forEach(el => {
+    const txt = T(el.dataset.i18nLead), first = el.firstChild;
+    if (first && first.nodeType === 3) first.nodeValue = txt;
+    else el.insertBefore(document.createTextNode(txt), el.firstChild);
+  });
+  $$('[data-i18n-ph]').forEach(el => { el.placeholder = T(el.dataset.i18nPh); });
+  $$('[data-i18n-al]').forEach(el => el.setAttribute('aria-label', T(el.dataset.i18nAl)));
+  $$('.nav').forEach(n => $$('button', n).forEach(b => {
+    const s = b.querySelector('span');
+    if (s && b.dataset.go) s.textContent = T('nav.' + b.dataset.go);
+  }));
+}
 
 /* The `aux` column is inherited from the build pipeline and is wrong for a
    number of verbs — a spot check of 29 unambiguous sein-verbs found 7 marked
@@ -1128,8 +1490,7 @@ function recentPace(days) {
 /* No Study tab: Home's primary button is the way in, and a second route to it
    only made the two compete. */
 const NAV = [
-  ['home', '◎', 'Home'], ['browse', '☰', 'Words'],
-  ['stats', '◔', 'Stats'], ['settings', '⚙', 'Settings']
+  ['home', '◎'], ['browse', '☰'], ['stats', '◔'], ['settings', '⚙']
 ];
 let current = 'home';
 function go(name) {
@@ -1148,8 +1509,8 @@ function go(name) {
   window.scrollTo(0, 0);
 }
 function buildNav() {
-  const html = NAV.map(([k, i, l]) =>
-    `<button data-go="${k}"><b>${i}</b>${l}</button>`).join('');
+  const html = NAV.map(([k, i]) =>
+    `<button data-go="${k}"><b>${i}</b><span>${T('nav.' + k)}</span></button>`).join('');
   $$('.nav').forEach(n => { n.innerHTML = html; });
 }
 document.addEventListener('click', e => {
@@ -1305,8 +1666,8 @@ function renderMilestone() {
   el.innerHTML = `
     <div class="wbar"><i class="${wk.pct >= 1 ? 'done' : ''}" style="width:${wpct}%"></i></div>
     <div class="mlabel wlabel">
-      <span><b>${wk.done.toLocaleString('en')}</b> of ${
-        wk.target.toLocaleString('en')} this week</span>
+      <span><b>${wk.done.toLocaleString(loc())}</b> of ${
+        wk.target.toLocaleString(loc())} this week</span>
       <span>${wk.daysLeft === 0 ? 'last day' :
         wk.daysLeft + (wk.daysLeft === 1 ? ' day left' : ' days left')}</span>
     </div>
@@ -1317,9 +1678,9 @@ function renderMilestone() {
       <div class="mticks">${'<span></span>'.repeat(10)}</div>
     </div>
     <div class="mlabel">
-      <span><b>${m.mastered.toLocaleString('en')}</b> mastered${
-        m.learning ? ` · <b>${m.learning.toLocaleString('en')}</b> learning` : ''}</span>
-      <span>${m.toGo.toLocaleString('en')} to go${m.estimated ? ' (est.)' : ''}</span>
+      <span><b>${m.mastered.toLocaleString(loc())}</b> mastered${
+        m.learning ? ` · <b>${m.learning.toLocaleString(loc())}</b> learning` : ''}</span>
+      <span>${m.toGo.toLocaleString(loc())} to go${m.estimated ? ' (est.)' : ''}</span>
     </div>`;
 }
 
@@ -1339,12 +1700,12 @@ function renderHome() {
   tick.setAttribute('stroke-dasharray', `2 ${CIRC}`);
   tick.setAttribute('stroke-dashoffset', `${(-tickAt * CIRC).toFixed(1)}`);
 
-  $('#ringpct').textContent = o.dayDone ? '✓' : o.answered.toLocaleString('en');
+  $('#ringpct').textContent = o.dayDone ? '✓' : o.answered.toLocaleString(loc());
   // the overall figure lives in the milestone bar now, so the ring is just today
   $('#ringsub').textContent = o.dayDone
-    ? 'done for today'
-    : `of ${o.dayTarget.toLocaleString('en')} today`;
-  $('#countdown').textContent = o.dte + ' days until the exam';
+    ? T('home.doneToday')
+    : T('home.ofToday', { n: nfmt(o.dayTarget) });
+  $('#countdown').textContent = T('home.countdown', { n: o.dte });
   renderMilestone();
   renderCounters(o);
 
@@ -1362,57 +1723,51 @@ function renderHome() {
  */
 function nextAction(o) {
   if (!o.triaged) {
-    return '<button class="btn" data-go="triage">Start sorting</button>';
+    return '<button class="btn" data-go="triage">' + T('home.startSorting') + '</button>';
   }
   if (o.cards > 0) {
     const more = o.untriaged > 0
       ? `<button class="btn ghost sm" data-go="triage" style="margin-top:9px">
-           Sort ${o.untriaged.toLocaleString('en')} more</button>`
+           ${T('home.sortMore', { n: nfmt(o.untriaged) })}</button>`
       : '';
     return `<button class="btn" data-go="study">
-      Study — ${o.cards.toLocaleString('en')} cards</button>` + more;
+      ${T('home.study', { n: nfmt(o.cards) })}</button>` + more;
   }
   if (o.untriaged > 0) {
     return `<button class="btn" data-go="triage">
-      Sort words — ${o.untriaged.toLocaleString('en')} left</button>`;
+      ${T('home.sortWords', { n: nfmt(o.untriaged) })}</button>`;
   }
-  return '<button class="btn" disabled>Nothing due today</button>';
+  return '<button class="btn" disabled>' + T('home.nothingDue') + '</button>';
 }
 
 /** The Today and Pace rows, which live under Stats but are kept current
     from Home too so the tab is never stale when you open it. */
 function renderCounters(o) {
   o = o || overview();
-  $('#s-due').textContent = o.due.toLocaleString('en');
-  $('#s-new').textContent = o.newLeft.toLocaleString('en');
-  $('#s-triage').textContent = o.untriaged.toLocaleString('en');
+  $('#s-due').textContent = o.due.toLocaleString(loc());
+  $('#s-new').textContent = o.newLeft.toLocaleString(loc());
+  $('#s-triage').textContent = o.untriaged.toLocaleString(loc());
   $('#s-streak').textContent =
-    (A.set.streak || 0) + (A.set.streak === 1 ? ' day' : ' days');
+    plural(A.set.streak || 0, 'u.day', 'u.days');
   const fz = A.set.freezes || 0;
-  $('#s-freeze').textContent = fz + (fz === 1 ? ' freeze' : ' freezes');
+  $('#s-freeze').textContent = plural(fz, 'u.freeze', 'u.freezes');
   renderHeat();
-  $('#s-need').textContent = o.need + (o.need === 1 ? ' word' : ' words');
+  $('#s-need').textContent = plural(o.need, 'u.word', 'u.words');
   const avg = recentPace(7);
-  $('#s-actual').textContent = avg + (avg === 1 ? ' word' : ' words');
+  $('#s-actual').textContent = plural(avg, 'u.word', 'u.words');
   const tr = $('#s-track');
-  if (!o.triaged) { tr.textContent = 'Sort first'; tr.style.color = 'var(--gold)'; }
-  else if (avg >= o.need) { tr.textContent = 'On track'; tr.style.color = 'var(--green)'; }
-  else { tr.textContent = 'Behind'; tr.style.color = 'var(--gold)'; }
+  if (!o.triaged) { tr.textContent = T('stats.sortFirst'); tr.style.color = 'var(--gold)'; }
+  else if (avg >= o.need) { tr.textContent = T('stats.onTrack'); tr.style.color = 'var(--green)'; }
+  else { tr.textContent = T('stats.behind'); tr.style.color = 'var(--gold)'; }
   renderPace(o.need);
 }
 
 /** Shown until the first word is sorted — the flow is not self-evident. */
 function firstRunGuide() {
   return `<div class="note">
-    <b>Start by sorting your words</b>
-    <ol>
-      <li>Each word appears once. Mark the ones you already know so they never
-        enter your study queue.</li>
-      <li>Aim for about a second per word — swipe right if you know it, left to
-        learn it.</li>
-      <li>Sort the A1–B1 words before you start studying, or the queue fills up
-        with words you already know.</li>
-    </ol></div>`;
+    <b>${T('guide.title')}</b>
+    <ol><li>${T('guide.1')}</li><li>${T('guide.2')}</li><li>${T('guide.3')}</li></ol>
+    </div>`;
 }
 
 /** Twelve weeks of activity, four levels, today ringed. */
@@ -1431,7 +1786,7 @@ function renderHeat() {
 function renderPace(need) {
   const series = paceSeries(7);
   const top = Math.max(need, ...series.map(d => d.n), 1);
-  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const DOW = T('u.dow').split(' ');
   const bars = series.map(d =>
     `<div><i class="${d.n >= need && d.n > 0 ? 'hit' : ''}"
         style="height:${Math.max(3, d.n / top * 100)}%" title="${d.key}: ${d.n}"></i></div>`
@@ -1452,10 +1807,9 @@ function isStandalone() {
 }
 function installBanner() {
   return `<div class="note">
-    <b>Add this to your Home Screen</b>
-    <p class="sub" style="margin:0">Safari deletes all data for this site after
-    7 days. Added to the Home Screen, it runs as an app and your progress
-    survives.<br><br>Share ⎋ → “Add to Home Screen”.</p></div>`;
+    <b>${T('install.title')}</b>
+    <p class="sub" style="margin:0">${T('install.body')}<br><br>${
+      T('install.share')}</p></div>`;
 }
 
 /* ======================= motion primitives =======================
@@ -1549,7 +1903,7 @@ function nextTriage() {
   const w = TG.list[TG.i];
   $('#tg-word').textContent = display(w);
   setTint(w.level.replace('*', ''));
-  $('#tg-fach').textContent = w.fach ? 'Technical' : '';
+  $('#tg-fach').textContent = w.fach ? T('tg.technical') : '';
   $('#tg-fach').style.display = w.fach ? '' : 'none';
   $('#tg-count').textContent = `${TG.i + 1} / ${TG.list.length}`;
   $('#tg-meter').style.width = (TG.i / TG.list.length * 100) + '%';
@@ -1704,7 +2058,7 @@ function startStudy() {
       '<span style="font-size:20px;color:var(--green)">Nothing due today</span>';
     $('#st-answer').classList.add('hidden');
     $('#st-gram').classList.add('hidden');
-    $('#st-hint').textContent = 'Come back tomorrow, or sort more words';
+    $('#st-hint').textContent = T('st.comeBack');
     hidePads();
     $('#st-donepad').classList.remove('hidden');
     $('#st-count').textContent = '';
@@ -1772,11 +2126,11 @@ function startMatch(words) {
   const cell = (w, side, label) =>
     `<button class="mtile" data-side="${side}" data-wid="${w.id}">${esc(label)}</button>`;
 
-  $('#st-prompt').innerHTML = 'Match the pairs<small class="gloss">tap a word, then its meaning</small>';
+  $('#st-prompt').innerHTML = T('st.matchPairs') + '<small class="gloss">' + T('st.matchSub') + '</small>';
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
   $('#st-hint').textContent = '';
-  $('#st-mode').textContent = MODE_LABEL.match;
+  $('#st-mode').textContent = modeLabel('match');
   $('#st-face').classList.add('top');
 
   const rows = [];
@@ -1856,7 +2210,7 @@ function showCard() {
     $('#st-gram').classList.remove('hidden');
     const o = overview();
     $('#st-hint').textContent = o.dayDone
-      ? 'That is everything due today'
+      ? T('st.allDone')
       : o.cards + ' still waiting today';
     hidePads();
     $('#st-donepad').classList.remove('hidden');
@@ -1891,7 +2245,7 @@ function showCard() {
   replayEnter($('#st-face'));
 
   setTint(w.level.replace('*', ''));
-  $('#st-mode').textContent = MODE_LABEL[ST.mode];
+  $('#st-mode').textContent = modeLabel(ST.mode);
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
   $('#st-mask').classList.add('hidden');
@@ -1908,8 +2262,8 @@ function showCard() {
     $('#st-mask').classList.remove('hidden');
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = lvl >= HINT_MAX
-      ? (isDrillableNoun(w) ? 'No help left — include the article' : 'No help left')
-      : (isDrillableNoun(w) ? 'Include the article' : 'Fill in the rest');
+      ? (isDrillableNoun(w) ? T('st.noHelpArticle') : T('st.noHelp'))
+      : (isDrillableNoun(w) ? T('st.includeArticle') : T('st.fillRest'));
     const inp = $('#st-input');
     inp.value = ''; inp.disabled = false;
     $('#st-check').disabled = true;
@@ -1919,7 +2273,7 @@ function showCard() {
     $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = isDrillableNoun(w)
-      ? 'Include the article' : 'Type the German word';
+      ? T('st.includeArticle') : T('st.typeGermanAria');
     const inp = $('#st-input');
     inp.value = ''; inp.disabled = false;
     $('#st-check').disabled = true;
@@ -1928,12 +2282,12 @@ function showCard() {
   } else if (ST.mode === 'article') {
     $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
-    $('#st-hint').textContent = 'Which article?';
+    $('#st-hint').textContent = T('st.whichArticle');
     $('#st-artpad').classList.remove('hidden');
   } else if (ST.mode === 'verb') {
     $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
     $('#st-answer').innerHTML = esc(verbFormsLine(w));
-    $('#st-hint').textContent = 'Simple past, past participle, and haben or sein';
+    $('#st-hint').textContent = T('st.verbSub');
     $('#st-vprt').value = ''; $('#st-vprt').disabled = false;
     $('#st-vpp').value = ''; $('#st-vpp').disabled = false;
     ST.aux = null;
@@ -1946,7 +2300,7 @@ function showCard() {
     $('#st-prompt').innerHTML = '<span class="sentence">' + clozePrompt(ST.sent) + '</span>';
     $('#st-answer').innerHTML = '<span class="sentence">' + clozeFilled(ST.sent) + '</span>';
     $('#st-gram').innerHTML = esc(ST.sent[3]);
-    $('#st-hint').textContent = 'Which word fits?';
+    $('#st-hint').textContent = T('st.whichWord');
     $('#st-clozeopts').innerHTML = clozeChoices(w, w.id)
       .map(o => `<button class="gbtn pbtn" data-cloze="${esc(o)}">${esc(o)}</button>`).join('');
     $('#st-clozepad').classList.remove('hidden');
@@ -1956,7 +2310,7 @@ function showCard() {
     ST.prep = null;
     $('#st-prompt').innerHTML = rectionPrompt(w, ST.pat);
     $('#st-answer').innerHTML = esc(rectionAnswer(ST.pat));
-    $('#st-hint').textContent = 'Which preposition?';
+    $('#st-hint').textContent = T('st.whichPrep');
     if (ST.pat.ex) $('#st-gram').innerHTML = '<b>' + esc(ST.pat.ex) + '</b>';
     $('#st-preps').innerHTML = prepChoices(ST.pat, w.id)
       .map(p => `<button class="gbtn pbtn" data-prep="${esc(p)}">${esc(p)}</button>`).join('');
@@ -1966,7 +2320,7 @@ function showCard() {
       ? esc(display(w))
       : esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(w.en) : displayMarked(w);
-    $('#st-hint').textContent = 'Tap to reveal';
+    $('#st-hint').textContent = T('st.tapReveal');
     $('#st-pad').classList.remove('hidden');
   }
 
@@ -2094,18 +2448,18 @@ function submitTyped() {
     grade = G.AGAIN;
     // showing what was typed next to the answer is the whole lesson — without
     // it you cannot see which part you got wrong
-    showResult(false, 'Not quite',
-      'You wrote <s>' + esc(raw.trim()) + '</s><br>Answer: <i>' +
+    showResult(false, T('st.notQuite'),
+      T('st.youWrote') + ' <s>' + esc(raw.trim()) + '</s><br>' + T('st.answer') + '<i>' +
       esc(res.expected) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Almost',
-      'You wrote <s>' + esc(raw.trim()) + '</s><br>Spelling: <i>' +
+    showResult(true, T('st.almost'),
+      T('st.youWrote') + ' <s>' + esc(raw.trim()) + '</s><br>' + T('st.spelling') + '<i>' +
       esc(res.expected) + '</i>');
   } else {
     // the card face already shows the word — the banner would only repeat it
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Correct', '');
+    showResult(true, T('st.correct'), '');
   }
   commitAnswer(w, grade, ST.elapsed);
 
@@ -2133,8 +2487,8 @@ function submitArticle(picked) {
 
   const ok = picked === w.article;
   const grade = ok ? adjustGrade(G.GOOD, ST.elapsed, ST.mode) : G.AGAIN;
-  showResult(ok, ok ? 'Correct' : 'Not quite',
-    ok ? '' : 'You chose <s>' + esc(picked) + '</s><br>Answer: <i>' +
+  showResult(ok, ok ? T('st.correct') : T('st.notQuite'),
+    ok ? '' : T('st.youChose') + ' <s>' + esc(picked) + '</s><br>' + T('st.answer') + '<i>' +
       esc(w.article + ' ' + w.lemma) + '</i>');
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -2162,17 +2516,17 @@ function submitVerb() {
   let grade;
   if (!res.ok) {
     grade = G.AGAIN;
-    showResult(false, 'Not quite',
-      'You wrote <s>' + esc(yours) + '</s><br>Answer: <i>' +
+    showResult(false, T('st.notQuite'),
+      T('st.youWrote') + ' <s>' + esc(yours) + '</s><br>' + T('st.answer') + '<i>' +
       esc(verbFormsLine(w)) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Almost',
-      'You wrote <s>' + esc(yours) + '</s><br>Spelling: <i>' +
+    showResult(true, T('st.almost'),
+      T('st.youWrote') + ' <s>' + esc(yours) + '</s><br>' + T('st.spelling') + '<i>' +
       esc(verbFormsLine(w)) + '</i>');
   } else {
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Correct', '');
+    showResult(true, T('st.correct'), '');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -2233,17 +2587,17 @@ function finishRection(kase) {
   let grade;
   if (!res.prepOk) {
     grade = G.AGAIN;
-    showResult(false, 'Not quite',
-      'You chose <s>' + esc(ST.prep) + '</s><br>Answer: <i>' +
+    showResult(false, T('st.notQuite'),
+      T('st.youChose') + ' <s>' + esc(ST.prep) + '</s><br>' + T('st.answer') + '<i>' +
       esc(rectionAnswer(ST.pat)) + '</i>');
   } else if (res.near) {
     grade = G.HARD;
-    showResult(true, 'Almost',
-      'Right preposition, wrong case<br>Answer: <i>' +
+    showResult(true, T('st.almost'),
+      T('st.prepWrongCase') + '<i>' +
       esc(rectionAnswer(ST.pat)) + '</i>');
   } else {
     grade = adjustGrade(G.GOOD, ST.elapsed, ST.mode);
-    showResult(true, 'Correct', '<i>' + esc(rectionAnswer(ST.pat)) + '</i>');
+    showResult(true, T('st.correct'), '<i>' + esc(rectionAnswer(ST.pat)) + '</i>');
   }
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -2260,8 +2614,8 @@ $('#st-clozeopts').addEventListener('click', e => {
   const picked = b.dataset.cloze;
   const ok = picked === w.lemma;
   const grade = ok ? adjustGrade(G.GOOD, ST.elapsed, ST.mode) : G.AGAIN;
-  showResult(ok, ok ? 'Correct' : 'Not quite',
-    ok ? '' : 'You chose <s>' + esc(picked) + '</s><br>Answer: <i>' +
+  showResult(ok, ok ? T('st.correct') : T('st.notQuite'),
+    ok ? '' : T('st.youChose') + ' <s>' + esc(picked) + '</s><br>' + T('st.answer') + '<i>' +
       esc(w.lemma) + '</i>');
   commitAnswer(w, grade, ST.elapsed);
   $('#st-result').classList.remove('hidden');
@@ -2276,7 +2630,7 @@ $('#st-preps').addEventListener('click', e => {
   // makes the case question meaningless
   if (ST.prep === ST.pat.prep && needsCase) {
     $('#st-prepad').classList.add('hidden');
-    $('#st-hint').textContent = 'Which case does it take?';
+    $('#st-hint').textContent = T('st.whichCase');
     $('#st-casepad').classList.remove('hidden');
     return;
   }
@@ -2345,7 +2699,7 @@ function renderBrowse() {
       <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
       <span style="color:var(--faint);font-size:16px;width:18px;text-align:center">${badge}</span>
     </div>`;
-  }).join('') || '<div class="empty">No words match that</div>';
+  }).join('') || `<div class="empty">${T('br.noMatch')}</div>`;
 }
 ['#br-q', '#br-lvl', '#br-state'].forEach(s => {
   const el = $(s);
@@ -2358,10 +2712,10 @@ $('#br-list').addEventListener('click', e => {
   const id = +row.dataset.id, w = A.words[id], st = A.state.get(id);
   if (st && st.s === 'known') {
     A.state.delete(id); A.dirty.delete(id); DB.tx('state', 'readwrite').delete(id);
-    toast('Back in the queue — tap again to mark it known');
+    toast(T('br.backQueue'));
   } else {
     const n = newState(); n.s = 'known'; setState(id, n);
-    toast('Marked as known — tap again to undo');
+    toast(T('br.markedKnown'));
   }
   renderBrowse();
 });
@@ -2393,82 +2747,80 @@ function renderStats() {
   const left = remainingToLearn();
   const proj = projectedDays();
   const dte = daysToExam();
-  const fmt = ms => new Date(ms).toLocaleDateString('en-GB',
+  const fmt = ms => new Date(ms).toLocaleDateString(loc(),
     { day: 'numeric', month: 'short', year: 'numeric' });
-  const projLabel = proj == null ? 'noch keine Daten' : fmt(Date.now() + proj * CFG.DAY);
+  const projLabel = proj == null ? T('stats.noData') : fmt(Date.now() + proj * CFG.DAY);
   const projColor = proj == null ? 'var(--dim)'
     : (proj <= dte ? 'var(--green)' : 'var(--gold)');
   const examLabel = fmt(new Date(A.set.exam + 'T09:00:00').getTime());
 
   $('#stats-body').innerHTML = `
-    <h2>Where your words are</h2>
+    <h2>${T('stats.where')}</h2>
     <div class="card">
-      <div class="stat"><span>Known</span><b>${c.known.toLocaleString('en')}</b></div>
-      <div class="stat"><span>In review</span><b>${c.review.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Learning</span><b>${c.learning.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Sorted, waiting</span><b>${c.queued.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Not sorted yet</span><b>${c.new.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Difficult</span><b>${c.leech.toLocaleString('en')}</b></div>
+      <div class="stat"><span>${T('br.known')}</span><b>${c.known.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('br.inReview')}</span><b>${c.review.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('br.learning')}</span><b>${c.learning.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.waiting')}</span><b>${c.queued.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.notSortedYet')}</span><b>${c.new.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('br.difficult')}</span><b>${c.leech.toLocaleString(loc())}</b></div>
     </div>
-    <h2>By exercise</h2>
+    <h2>${T('stats.byExercise')}</h2>
     <div class="card">
       ${Object.keys(MODE_LABEL).map(k =>
-        `<div class="stat"><span>${MODE_LABEL[k]}</span>
-          <b>${modeReps[k].toLocaleString('en')}<i> · ${secs(k)}</i></b></div>`).join('')}
+        `<div class="stat"><span>${modeLabel(k)}</span>
+          <b>${modeReps[k].toLocaleString(loc())}<i> · ${secs(k)}</i></b></div>`).join('')}
     </div>
-    <h2>Will you make it</h2>
+    <h2>${T('stats.willYouMakeIt')}</h2>
     <div class="card">
-      <div class="stat"><span>Answers you got right (30 days)</span><b>${
+      <div class="stat"><span>${T('stats.retention')}</span><b>${
         ret == null ? '–' : Math.round(ret * 100) + '%'}</b></div>
-      <div class="stat"><span>You already knew, of what you sorted</span><b>${
+      <div class="stat"><span>${T('stats.knewRate')}</span><b>${
         ms.knewRate == null ? '–' : Math.round(ms.knewRate * 100) + '%'}</b></div>
-      <div class="stat"><span>Words you will need to learn</span><b>${
-        ms.estimated ? '~' : ''}${ms.target.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Mastered so far</span><b>${
-        ms.mastered.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Still learning</span><b>${
-        ms.learning.toLocaleString('en')}</b></div>
-      <div class="stat"><span>This week</span><b>${
-        wk.done.toLocaleString('en')} of ${wk.target.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Words left to learn</span><b>${left.toLocaleString('en')}</b></div>
-      <div class="stat"><span>Finished by</span><b style="color:${projColor}">${projLabel}</b></div>
-      <div class="stat"><span>Exam</span><b>${examLabel}</b></div>
+      <div class="stat"><span>${T('stats.target')}</span><b>${
+        ms.estimated ? '~' : ''}${ms.target.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.masteredSoFar')}</span><b>${
+        ms.mastered.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.stillLearning')}</span><b>${
+        ms.learning.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.thisWeek')}</span><b>${
+        T('stats.ofTarget', { done: nfmt(wk.done), target: nfmt(wk.target) })}</b></div>
+      <div class="stat"><span>${T('stats.leftToLearn')}</span><b>${left.toLocaleString(loc())}</b></div>
+      <div class="stat"><span>${T('stats.finishedBy')}</span><b style="color:${projColor}">${projLabel}</b></div>
+      <div class="stat"><span>${T('stats.exam')}</span><b>${examLabel}</b></div>
     </div>
-    ${leeches.length ? `<h2>Words that keep beating you</h2>
-      <p class="sub" style="margin:0 0 6px">Wrong eight times, so they are paused.
-      Tap one to start it over from the beginning.</p>
+    ${leeches.length ? `<h2>${T('stats.leechTitle')}</h2>
+      <p class="sub" style="margin:0 0 6px">${T('stats.leechSub')}</p>
       <div class="card">${leeches.slice(0, 40).map(w => {
         const lv = w.level.replace('*', '');
         return `<div class="wrow" data-leech="${w.id}">
           <span class="pill p-${lv}">${lv}</span>
           <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
-          <span style="color:var(--blue-lt);font-size:13px">restart</span>
+          <span style="color:var(--blue-lt);font-size:13px">${T('stats.restart')}</span>
         </div>`;
       }).join('')}</div>
       <button class="btn ghost sm" id="leech-all" style="margin-top:10px">
-        Restart all ${leeches.length}</button>` : ''}`;
+        ${T('stats.restartAll', { n: leeches.length })}</button>` : ''}`;
 }
 
 $('#stats-body').addEventListener('click', e => {
   if (e.target.closest('#leech-all')) {
     const n = rehabAllLeeches();
-    toast(n + (n === 1 ? ' word is back in the queue' : ' words are back in the queue'));
+    toast(T(n === 1 ? 'stats.backOne' : 'stats.backMany', { n: nfmt(n) }));
     renderStats();
     return;
   }
   const row = e.target.closest('[data-leech]');
   if (!row) return;
   const id = +row.dataset.leech;
-  if (rehabLeech(id)) toast(display(A.words[id]) + ' — starting over');
+  if (rehabLeech(id)) toast(T('stats.startingOver', { w: display(A.words[id]) }));
   renderStats();
 });
 
 /* ============================ settings ============================ */
 function renderSettings() {
   $('#installcard').innerHTML = isStandalone()
-    ? `<div class="note ok"><b>✓ Installed as an app</b>
-         <p class="sub" style="margin:0">Your progress is safe from Safari's
-         7-day data purge.</p></div>`
+    ? `<div class="note ok"><b>${T('install.ok')}</b>
+         <p class="sub" style="margin:0">${T('install.okBody')}</p></div>`
     : installBanner();
 
   $('#set-exam').value = A.set.exam;
@@ -2476,6 +2828,8 @@ function renderSettings() {
   $('#set-max').value = A.set.maxReviews;
   $('#set-speak').checked = !!A.set.speak;
   $('#set-speak').disabled = !speechAvailable();
+  $$('#set-lang button').forEach(b =>
+    b.classList.toggle('on', b.dataset.lang === lang()));
 
   const counts = {};
   for (const w of A.words) {
@@ -2486,12 +2840,12 @@ function renderSettings() {
   $('#scope').innerHTML = Object.keys(A.set.scope).map(k =>
     `<label class="check"><input type="checkbox" data-scope="${k}"
        ${A.set.scope[k] ? 'checked' : ''}><span>${k}</span>
-     <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString('en')}</b></label>`
+     <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString(loc())}</b></label>`
   ).join('');
   // CC BY 2.0 FR requires attribution wherever the sentences are used
   const nSent = Object.keys(A.sentences).length;
-  $('#ver').innerHTML = `${A.words.length.toLocaleString('en')} words · data v1` +
-    (nSent ? `<br>Example sentences from Tatoeba (CC BY 2.0 FR)` : '');
+  $('#ver').innerHTML = T('set.words', { n: nfmt(A.words.length) }) +
+    (nSent ? '<br>' + T('set.sentences') : '');
 }
 $('#set-exam').addEventListener('change', e => { A.set.exam = e.target.value; saveSettings(); });
 $('#set-new').addEventListener('change', e => { A.set.newPerDay = +e.target.value || 0; saveSettings(); });
@@ -2503,10 +2857,10 @@ $('#set-speak').addEventListener('change', e => {
     loadVoices();
     // iOS wants the first utterance inside a user gesture; this tap is one
     say('Bereit', 'de-DE');
-    toast('Answers will be read aloud');
+    toast(T('toast.voiceOn'));
   } else {
     stopSpeech();
-    toast('Voice off');
+    toast(T('toast.voiceOff'));
   }
 });
 /* tap the revealed answer to hear it again */
@@ -2514,10 +2868,23 @@ $('#st-answer').addEventListener('click', e => {
   e.stopPropagation();
   if (ST.queue[ST.i]) speakCard(ST.queue[ST.i], ST.mode);
 });
+/* Language is a display setting: it writes one settings field and re-renders.
+   It never reads, writes or migrates a review record — switching mid-session
+   is safe, and so is switching back. */
+$('#set-lang').addEventListener('click', e => {
+  const b = e.target.closest('[data-lang]');
+  if (!b || !LANGS.includes(b.dataset.lang) || b.dataset.lang === lang()) return;
+  A.set.lang = b.dataset.lang;
+  saveSettings();
+  applyI18n();
+  buildNav();
+  go(current);              // redraw the visible screen in the new language
+  toast(T('toast.lang'));
+});
 $('#scope').addEventListener('change', e => {
   const k = e.target.dataset.scope;
   if (!k) return;
-  A.set.scope[k] = e.target.checked; saveSettings(); toast('Scope updated');
+  A.set.scope[k] = e.target.checked; saveSettings(); toast(T('toast.scope'));
 });
 
 /* ---- backup / restore ---- */
@@ -2534,34 +2901,34 @@ $('#btn-export').addEventListener('click', async () => {
   a.download = `wortmeister-${today()}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast('Backup saved to your downloads');
+  toast(T('toast.backup'));
 });
 $('#btn-import').addEventListener('click', () => $('#file-import').click());
 $('#file-import').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     const d = JSON.parse(await f.text());
-    if (d.app !== 'wortmeister') throw new Error('that is not a Wortmeister backup');
+    if (d.app !== 'wortmeister') throw new Error(T('err.notBackup'));
     A.set = Object.assign({}, CFG.defaults, d.settings || {});
     A.state = new Map(d.state || []);
     A.dirty.clear();
     await DB.clear('state');
     await DB.putMany('state', Array.from(A.state.entries()));
     await saveSettings();
-    toast(`Restored ${A.state.size.toLocaleString('en')} words`);
+    toast(T('toast.restored', { n: nfmt(A.state.size) }));
+    applyI18n(); buildNav();
     go('home');
-  } catch (err) { toast("Couldn't restore — " + err.message); }
+  } catch (err) { toast(T('toast.restoreFail', { e: err.message })); }
   e.target.value = '';
 });
 $('#btn-reset').addEventListener('click', async () => {
-  if (!confirm('Delete all your progress? This cannot be undone. ' +
-    'Back up first if you are not sure.')) return;
+  if (!confirm(T('confirm.reset'))) return;
   await DB.clear('state');
   A.state = new Map();
   A.dirty.clear();
   A.set = JSON.parse(JSON.stringify(CFG.defaults));
   await saveSettings();
-  toast('Everything reset'); go('home');
+  toast(T('toast.reset')); go('home');
 });
 
 /* ============================ boot ============================ */
@@ -2573,9 +2940,10 @@ async function boot() {
     if (!A.set.medians) A.set.medians = {};
     if (!A.set.history) A.set.history = {};
     migrateDates();
-    $('#splashmsg').textContent = 'Loading vocabulary…';
+    $('#splashmsg').textContent = T('loading');
     await loadVocab();
     A.state = await DB.all('state');
+    applyI18n();
     buildNav();
     trackKeyboard();
     if (navigator.storage && navigator.storage.persist) {
@@ -2598,8 +2966,8 @@ async function boot() {
   } catch (e) {
     $('#splash').innerHTML =
       `<div style="padding:24px;text-align:center;color:var(--red)">
-         <b>Couldn't load the app</b><br><span class="sub">${esc(e.message)}</span>
-         <br><br><span class="sub">Check your connection and reload.</span></div>`;
+         <b>${T('err.title')}</b><br><span class="sub">${esc(e.message)}</span>
+         <br><br><span class="sub">${T('err.load')}.</span></div>`;
     console.error(e);
   }
 }
@@ -2612,6 +2980,7 @@ window.__wm = {
   daysToExam, buildSession, dueList, queuedNew, untriaged, tierOf, inScope,
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
+  I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
