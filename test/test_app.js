@@ -79,6 +79,21 @@ function A_extendedSample(w){
     ok('every var() used in the stylesheet is defined',
       missing.length === 0, missing.join(', '));
     ok('the stylesheet declares tokens at all', declared.size > 10, declared.size);
+
+    // `body` already pads by the safe-area insets, so anything laid out inside
+    // it starts within them. Referencing env() again from an element that is
+    // positioned against the body — rather than against the viewport — counts
+    // the inset twice and throws away 34px at the bottom of an iPhone 17. That
+    // is what floated the tab bar 82px up a screen that had already been
+    // shortened by 34. Only `body` and position:fixed elements may use them.
+    const offenders = [];
+    for (const rule of css.split('}')) {
+      if (!/env\(safe-area-inset/.test(rule)) continue;
+      const sel = (rule.split('{')[0] || '').trim().split('\n').pop().trim();
+      if (sel !== 'body' && !/position\s*:\s*fixed/.test(rule)) offenders.push(sel);
+    }
+    ok('safe-area insets are never counted twice', offenders.length === 0,
+      offenders.join(' | '));
   }
 
   // ---------------------------------------------------------- boot in jsdom

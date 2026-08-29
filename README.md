@@ -168,6 +168,35 @@ out to already know pulls the target down immediately.
 
 ---
 
+## Fitting the phone
+
+Sized for **iPhone 17 — 402 × 874 pt**, which leaves 781 pt of usable height
+once the Dynamic Island and the home indicator take their cut.
+
+Two things were wasting that height:
+
+- **The safe-area inset was counted twice.** `body` pads by all four insets,
+  so everything laid out inside it already starts within them — and `.nav` and
+  `.pad` added `env(safe-area-inset-bottom)` again on top. The tab bar floated
+  82 pt above the bottom of a screen that had already been shortened by 34.
+  Only `body` and `position: fixed` elements may reference the insets now, and
+  the suite lints it.
+- **Everything was sized in `vw`.** A phone that is tall rather than wide
+  gained nothing from the extra pixels. The ring now takes
+  `min(64vw, calc(var(--vvh) * .29), 248px)`, so it grows on a tall screen and
+  still shrinks on a short one.
+
+Home's leftover space used to pool into one dead block above the tab bar. It
+is now split above and below the content with auto margins — which, unlike
+`justify-content: center`, collapse to zero when the content really does
+overflow, so the top of a first-run Home stays reachable.
+
+The study type was left alone deliberately. Driving it from height too was
+measured, and at 42 px `der Betrieb, Betriebe` wraps onto two lines — it is
+already at the size the *width* allows.
+
+---
+
 ## Coming back tomorrow
 
 The ring on Home measures **today**, not your lifetime — a lifetime bar sits at
@@ -319,7 +348,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-498 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+499 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

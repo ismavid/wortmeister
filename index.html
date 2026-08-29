@@ -89,7 +89,7 @@ input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 .view{flex:1;display:none;flex-direction:column;min-height:0;position:relative;z-index:1}
 .view.on{display:flex}
 .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  padding:0 20px 120px;scrollbar-width:none}
+  padding:0 20px 86px;scrollbar-width:none}
 .scroll::-webkit-scrollbar{display:none}
 
 h1{font-size:21px;margin:0;font-weight:600;letter-spacing:-.03em}
@@ -149,7 +149,7 @@ button{font-family:inherit}
 /* ---------- progress ring ----------
    Centred by layout, not by a magic negative margin that drifts whenever the
    type size changes. */
-.ringwrap{position:relative;width:min(62vw,208px);aspect-ratio:1;
+.ringwrap{position:relative;width:min(64vw,calc(var(--vvh) * .29),248px);aspect-ratio:1;
   margin:18px auto 0;display:grid;place-items:center}
 .ring{position:absolute;inset:0;width:100%;height:100%}
 .ringwrap b{position:relative;font-size:clamp(40px,12vw,52px);font-weight:700;
@@ -160,6 +160,10 @@ button{font-family:inherit}
    Segmented so progress reads as chunks gained rather than a smear, and the
    fill grows from zero every time Home renders — that growth is the reward. */
 .milestone{margin:0 0 26px}
+/* Home only: distribute the slack instead of letting it pool above the bar. */
+#v-home .scroll{display:flex;flex-direction:column}
+#v-home .ringwrap{margin-top:auto;align-self:center}
+#v-home #todo{margin-bottom:auto}
 .mbar{position:relative;height:12px;border-radius:99px;overflow:hidden;
   background:rgba(255,255,255,.08)}
 /* two bands: what you have mastered, over what you have started. Reaching
@@ -345,7 +349,7 @@ body.kb .typein.sm{min-height:44px}
 
 /* ---------- result: a glass sheet that lifts under the answer ---------- */
 .resultbar{flex:0 0 auto;margin:16px -20px -16px;
-  padding:20px 20px calc(18px + env(safe-area-inset-bottom));
+  padding:20px 20px 18px;
   display:grid;gap:16px;backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   animation:lift .3s cubic-bezier(.32,.72,0,1)}
 @keyframes lift{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
@@ -397,7 +401,7 @@ select{appearance:none;-webkit-appearance:none}
 .toast.on{opacity:1}
 
 /* the tab bar floats above the content rather than sitting in the flow */
-.nav{position:absolute;left:16px;right:16px;bottom:calc(14px + env(safe-area-inset-bottom));
+.nav{position:absolute;left:16px;right:16px;bottom:14px;
   display:flex;border-radius:26px;overflow:hidden;background:rgba(255,255,255,.07);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);z-index:5}
 .nav button{flex:1;background:none;border:0;color:var(--faint);padding:9px 0 8px;

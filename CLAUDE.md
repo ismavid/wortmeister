@@ -74,7 +74,24 @@ changes. Phases 1, 2 and 3 are all shipped.
    four of them, which is what made it feel busy. `nextAction()` picks the
    single next step — do not add a second competing button. The ring is today,
    the bar is the long arc; keep those roles distinct.
-13. **Never `var()` a custom property that `:root` does not declare.** An
+13. **Never add `env(safe-area-inset-*)` to anything laid out inside `body`.**
+    `body` already pads by all four insets, so `#app`, `.view` and everything
+    under them start *inside* the safe area. Referencing `env()` again from an
+    element positioned against the body counts the inset twice. `.nav` did
+    exactly that and floated 82px above the bottom of an iPhone 17 on a screen
+    that had already been shortened by 34px; `.pad` did the same to the grade
+    buttons. Only `body` itself and `position: fixed` elements — which lay out
+    against the viewport, not the body — may reference the insets. The suite
+    lints this.
+
+14. **Size against height as well as width on the phone.** Every dimension
+    here was originally a `vw` or a `vw`-based `clamp()`, so a screen that is
+    tall rather than wide gained nothing from the extra pixels. The ring takes
+    `min(64vw, calc(var(--vvh) * .29), 248px)`. **Do not raise `.word` the same
+    way** — it was measured, and at 42px `der Betrieb, Betriebe` wraps to two
+    lines. The study type is already at the width-optimal size.
+
+15. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -92,7 +109,7 @@ sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
-test/test_app.js        498 assertions, jsdom + fake-indexeddb
+test/test_app.js        499 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -163,7 +180,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 498 passed, then 22 passed
+cd test && npm install && npm test     # expect: 499 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
