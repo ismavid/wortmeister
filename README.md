@@ -48,12 +48,19 @@ The interface is in English or Spanish; only the vocabulary itself is German.
 Español. It is a display setting: it writes one field and redraws the screen,
 and touches no review record — switch mid-session, switch back, nothing moves.
 
-**Word meanings stay in English in both.** The vocabulary carries exactly one
-gloss per word and that gloss is English, so a Spanish interface would be
-lying if the cards claimed otherwise. `der Betrieb` still reads
-*operation, business* on the back. Translating 10,390 glosses is a data job,
-not a UI one — it would need a new file keyed by the existing ids, the same
-way the sentence bank works.
+**The card meanings switch too.** `data/glosses.es.v1.json` carries a Spanish
+meaning for all **7,035 words in scope** — `der Betrieb` reads *operation,
+business* in English and *empresa; funcionamiento, operación* in Spanish. It is
+a separate 172 KB file **keyed by the ids already in `vocab.v1.json`**, exactly
+like the sentence bank, so the vocabulary is never rewritten and no id moves.
+
+It loads only when the interface is Spanish, after first paint, and the
+fallback is **per word**: anything the bank does not cover keeps its English
+gloss and says so on the pill — *Alemán → Inglés* rather than *Alemán →
+Español*. A missing or broken file costs you nothing but the translations.
+
+The German is never touched. Lemmas, articles, plurals and verb forms are the
+same in both languages, and so is every answer you type.
 
 **After that — daily.** Home shows one action and nothing else: Study when
 cards are waiting, Sort when they are not. Every number lives under Stats, so
@@ -348,7 +355,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-499 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+517 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

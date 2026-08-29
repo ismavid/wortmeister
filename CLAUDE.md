@@ -43,9 +43,13 @@ changes. Phases 1, 2 and 3 are all shipped.
    - `lang` is a settings field defaulting to `'en'`. Boot never writes
      settings, so an existing install picks up the default without its stored
      record being rewritten.
-   - **Word meanings stay English.** The `en` column is the only gloss the
-     data carries. Do not fake Spanish glosses, and do not let the toggle
-     imply the cards were translated — Settings says so explicitly.
+   - **Card meanings are translated too**, via `data/glosses.es.v1.json` —
+     a separate file keyed by the ids already in `vocab.v1.json`, like the
+     sentence bank, covering all 7,035 in-scope words. It is fetched only when
+     the interface is Spanish. **The fallback is per word**: `gloss(w)` returns
+     English for anything uncovered and `modeLabel(k, w)` says `Alemán →
+     Inglés` for that card, so the pill never promises a translation that is
+     not there. Never inline Spanish into `vocab.v1.json`.
    - Numbers and dates follow `loc()`, not a hardcoded `'en'`/`'en-GB'`.
 6. **Dark theme, mobile-first.** Minimum tap target 48px. Controls live in the
    thumb-reachable bottom third. Test at 375px wide.
@@ -109,7 +113,8 @@ sw.js                   offline precache — bump CACHE when assets change
 manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
-test/test_app.js        499 assertions, jsdom + fake-indexeddb
+data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
+test/test_app.js        517 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -180,7 +185,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 499 passed, then 22 passed
+cd test && npm install && npm test     # expect: 517 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

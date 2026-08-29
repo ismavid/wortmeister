@@ -407,7 +407,7 @@ function A_extendedSample(w){
     ok('the document language attribute follows',
       doc.documentElement.lang === 'es');
     ok('placeholders translate',
-      doc.getElementById('br-q').placeholder === 'Buscar en alemán o inglés');
+      doc.getElementById('br-q').placeholder === 'Buscar en alemán o español');
     ok('aria-labels translate',
       doc.getElementById('st-input').getAttribute('aria-label')
         === 'Escribe la palabra en alemán');
@@ -433,6 +433,80 @@ function A_extendedSample(w){
     M.applyI18n();
     ok('switching back restores English',
       doc.querySelector('[data-i18n="set.title"]').textContent === before);
+  }
+
+  // ------------------------------------------------- Spanish card meanings
+  // The gloss bank is a separate file keyed by the ids already in
+  // vocab.v1.json, exactly like the sentence bank. It must never be required:
+  // a word it does not cover keeps its English gloss, one card at a time.
+  console.log('\n== Spanish glosses ==');
+  {
+    const bank = JSON.parse(fs.readFileSync(path.join(APP, 'data/glosses.es.v1.json'), 'utf8'));
+    ok('the gloss bank is v1 and columnar',
+      bank.v === 1 && Array.isArray(bank.ids) && Array.isArray(bank.es));
+    ok('ids and translations line up', bank.ids.length === bank.es.length,
+      bank.ids.length + ' vs ' + bank.es.length);
+    ok('every gloss id exists in the vocabulary',
+      bank.ids.every(id => M.A.words[id]), 'orphan id');
+    ok('no gloss is empty', bank.es.every(g => typeof g === 'string' && g.trim()));
+    ok('gloss ids are unique', new Set(bank.ids).size === bank.ids.length);
+
+    const stateBefore = JSON.stringify(Array.from(M.A.state.entries()));
+    const sample = M.A.words[bank.ids[0]];
+
+    // English is the default and must be untouched by the bank existing
+    M.A.set.lang = 'en';
+    ok('English still shows the English gloss', M.gloss(sample) === sample.en);
+    ok('English speaks the gloss in English', M.glossLang(sample) === 'en-US');
+
+    M.A.set.lang = 'es';
+    M.A.glosses = {};
+    ok('Spanish falls back to English before the bank loads',
+      M.gloss(sample) === sample.en);
+    // now with the bank in memory
+    M.A.glosses = {}; bank.ids.forEach((id, n) => { M.A.glosses[id] = bank.es[n]; });
+    ok('Spanish shows the Spanish gloss once loaded',
+      M.gloss(sample) === bank.es[0], M.gloss(sample));
+    ok('Spanish speaks the gloss in Spanish', M.glossLang(sample) === 'es-ES');
+
+    // an untranslated word must degrade on its own, not blank
+    const missing = M.A.words.find(x => M.inScope(x) && !(x.id in M.A.glosses));
+    if (missing) {
+      ok('an untranslated word keeps its English gloss',
+        M.gloss(missing) === missing.en, missing.lemma);
+      ok('and is spoken in English', M.glossLang(missing) === 'en-US');
+    } else {
+      ok('every in-scope word is translated', true, 'full coverage');
+    }
+
+    // the mode pill must describe the card in front of you, not the setting
+    ok('the pill says German → Spanish for a translated word',
+      M.modeLabel('de2en', sample) === 'Alemán → Español',
+      M.modeLabel('de2en', sample));
+    const notCovered = M.A.words.find(x => !(x.id in M.A.glosses));
+    if (notCovered) {
+      ok('and German → English for one the bank does not cover',
+        M.modeLabel('de2en', notCovered) === 'Alemán → Inglés',
+        M.modeLabel('de2en', notCovered));
+    }
+    ok('English keeps its own pill', (() => {
+      M.A.set.lang = 'en';
+      const r = M.modeLabel('de2en', sample) === 'German → English';
+      M.A.set.lang = 'es';
+      return r;
+    })());
+
+    // the German side is never touched
+    ok('German lemmas are untouched by the gloss bank',
+      M.A.words[500].lemma === 'informieren');
+    ok('part-of-speech labels translate', M.posLabel('noun') === 'sustantivo');
+    M.A.set.lang = 'en';
+    ok('and revert with the language', M.posLabel('noun') === 'noun');
+
+    ok('no review record changed while switching gloss language',
+      JSON.stringify(Array.from(M.A.state.entries())) === stateBefore);
+    M.A.glosses = {};
+    M.applyI18n();
   }
 
   // ------------------------------------------- exam-relevance ordering

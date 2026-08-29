@@ -11,6 +11,8 @@ const CFG = {
   // a SEPARATE file keyed by the ids already in vocab.v1.json — the vocabulary
   // is never edited, so no id can move and no progress can be re-pointed
   sentences: 'data/sentences.v1.json',
+  // same deal for the Spanish glosses: a separate file keyed by existing ids
+  glossesEs: 'data/glosses.es.v1.json',
   dbName: 'wortmeister', dbVer: 1,
   MIN: 60000, DAY: 86400000,
   LEARN_STEPS: [10 * 60000, 86400000],   // 10 min, 1 day
@@ -145,6 +147,7 @@ const I18N = {
     'st.comeBack': 'Come back tomorrow, or sort more words',
 
     'mode.de2en': 'German → English', 'mode.en2de': 'English → German',
+    'mode.de2enEn': 'German → English', 'mode.en2deEn': 'English → German',
     'mode.type': 'Type it', 'mode.article': 'Article', 'mode.verb': 'Verb forms',
     'mode.rection': 'Preposition', 'mode.match': 'Match',
     'mode.cloze': 'In a sentence', 'mode.hint': 'Fill it in',
@@ -213,6 +216,11 @@ const I18N = {
     'toast.lang': 'Interface language changed',
     'confirm.reset': 'Delete all your progress? This cannot be undone. Back up first if you are not sure.',
     'err.notBackup': 'that is not a Wortmeister backup',
+
+    'pos.noun': 'noun', 'pos.verb': 'verb', 'pos.adj': 'adjective',
+    'pos.adv': 'adverb', 'pos.conj': 'conjunction', 'pos.prep': 'preposition',
+    'pos.pron': 'pronoun', 'pos.num': 'numeral', 'pos.det': 'determiner',
+    'pos.particle': 'particle', 'pos.intj': 'interjection', 'pos.prefix': 'prefix',
 
     'u.day': 'day', 'u.days': 'days',
     'u.word': 'word', 'u.words': 'words',
@@ -297,15 +305,17 @@ const I18N = {
     'st.allDone': 'Eso es todo lo pendiente de hoy',
     'st.comeBack': 'Vuelve mañana, o clasifica más palabras',
 
-    'mode.de2en': 'Alemán → Inglés',
-    'mode.en2de': 'Inglés → Alemán',
+    'mode.de2en': 'Alemán → Español',
+    'mode.en2de': 'Español → Alemán',
+    'mode.de2enEn': 'Alemán → Inglés',
+    'mode.en2deEn': 'Inglés → Alemán',
     'mode.type': 'Escríbela', 'mode.article': 'Artículo',
     'mode.verb': 'Formas verbales',
     'mode.rection': 'Preposición', 'mode.match': 'Parejas',
     'mode.cloze': 'En una frase', 'mode.hint': 'Complétala',
 
     'br.title': 'Palabras',
-    'br.search': 'Buscar en alemán o inglés',
+    'br.search': 'Buscar en alemán o español',
     'br.allLevels': 'Todos los niveles', 'br.allWords': 'Todas las palabras',
     'br.notSorted': 'Sin clasificar', 'br.learning': 'Aprendiendo',
     'br.inReview': 'En repaso', 'br.known': 'Conocidas',
@@ -374,6 +384,11 @@ const I18N = {
     'confirm.reset': '¿Borrar todo tu progreso? Esto no se puede deshacer. Haz una copia de seguridad primero si no estás seguro.',
     'err.notBackup': 'eso no es una copia de Wortmeister',
 
+    'pos.noun': 'sustantivo', 'pos.verb': 'verbo', 'pos.adj': 'adjetivo',
+    'pos.adv': 'adverbio', 'pos.conj': 'conjunción', 'pos.prep': 'preposición',
+    'pos.pron': 'pronombre', 'pos.num': 'numeral', 'pos.det': 'determinante',
+    'pos.particle': 'partícula', 'pos.intj': 'interjección', 'pos.prefix': 'prefijo',
+
     'u.day': 'día', 'u.days': 'días',
     'u.word': 'palabra', 'u.words': 'palabras',
     'u.freeze': 'congelación', 'u.freezes': 'congelaciones',
@@ -398,7 +413,14 @@ function T(key, vars) {
 function plural(n, one, many) { return nfmt(n) + ' ' + T(n === 1 ? one : many); }
 /** Mode pill labels. MODE_LABEL stays the canonical key registry — Stats
     derives its counters from its keys — and only the label is translated. */
-function modeLabel(k) { return T('mode.' + k); }
+function modeLabel(k, w) {
+  // A word the Spanish bank does not cover still shows its English gloss, so
+  // the pill must say so rather than promising a translation that is not there.
+  if (lang() === 'es' && (k === 'de2en' || k === 'en2de') && w && !A.glosses[w.id]) {
+    return T('mode.' + k + 'En');
+  }
+  return T('mode.' + k);
+}
 /** Fill every statically-marked node in the shell. Called on boot and on each
     language change; re-rendering the active view covers everything dynamic. */
 function applyI18n() {
@@ -556,6 +578,7 @@ const A = {
   family: new Map(),  // 5-letter stem -> [word id]
   byPos: new Map(),   // pos -> [word], for cloze distractors
   sentences: {},      // word id -> [[german, blankAt, blankLen, english]]
+  glosses: {},        // word id -> Spanish gloss, when the Spanish bank is loaded
   state: new Map(),   // id -> review record (only touched words)
   set: null,          // settings
   dirty: new Set(),
@@ -749,6 +772,55 @@ async function loadSentences() {
     }
   }
   A.sentences = (cached && cached.byId) || {};
+}
+
+/**
+ * The Spanish gloss bank. Loaded only when the interface is in Spanish,
+ * because it is 200 KB nobody studying in English needs, and it arrives after
+ * first paint the same way the sentence bank does. Keyed by the ids already in
+ * vocab.v1.json — the vocabulary is never rewritten, so no id can move and no
+ * review record is re-pointed. If it never arrives, every card simply keeps
+ * its English gloss.
+ */
+async function loadGlosses() {
+  if (A.glossesLoading) return A.glossesLoading;
+  A.glossesLoading = (async () => {
+    let cached = await DB.get('kv', 'glosses-es');
+    if (!cached || cached.v !== 1 || !Array.isArray(cached.ids)) {
+      try {
+        const r = await fetch(CFG.glossesEs, { cache: 'force-cache' });
+        const fresh = r.ok ? await r.json() : null;
+        if (fresh && fresh.v === 1 && Array.isArray(fresh.ids) && Array.isArray(fresh.es)) {
+          cached = fresh;
+          await DB.set('kv', 'glosses-es', cached);
+        } else {
+          cached = null;                 // never cache something unusable
+        }
+      } catch (e) {
+        console.warn('Spanish gloss bank unavailable', e);
+        cached = null;
+      }
+    }
+    const map = {};
+    if (cached) for (let n = 0; n < cached.ids.length; n++) map[cached.ids[n]] = cached.es[n];
+    A.glosses = map;
+  })();
+  return A.glossesLoading;
+}
+
+/**
+ * What a card should show as the meaning. Spanish when the interface is in
+ * Spanish and this word has been translated, English otherwise — the fallback
+ * is per word, so partial coverage degrades one card at a time instead of
+ * blanking anything.
+ */
+function gloss(w) {
+  if (lang() === 'es') { const es = A.glosses[w.id]; if (es) return es; }
+  return w.en;
+}
+/** The language `gloss()` actually returned, so speech reads it correctly. */
+function glossLang(w) {
+  return (lang() === 'es' && A.glosses[w.id]) ? 'es-ES' : 'en-US';
 }
 
 /** Sentences available for a word, or null. */
@@ -1228,7 +1300,7 @@ function speechFor(w, mode) {
   if (!w) return null;
   switch (mode) {
     // the answer here is the English gloss, so that is what gets read
-    case 'de2en': return { text: w.en, lang: 'en-US' };
+    case 'de2en': return { text: gloss(w), lang: glossLang(w) };
     case 'en2de': return { text: display(w), lang: 'de-DE' };
     case 'type': case 'hint': return { text: typeTarget(w), lang: 'de-DE' };
     case 'article': return { text: w.article + ' ' + w.lemma, lang: 'de-DE' };
@@ -2136,7 +2208,7 @@ function startMatch(words) {
   const rows = [];
   for (let i = 0; i < words.length; i++) {
     rows.push(cell(left[i], 'de', display(left[i])));
-    rows.push(cell(right[i], 'en', right[i].en));
+    rows.push(cell(right[i], 'en', gloss(right[i])));
   }
   $('#st-matchgrid').innerHTML = rows.join('');
   hidePads();
@@ -2245,7 +2317,7 @@ function showCard() {
   replayEnter($('#st-face'));
 
   setTint(w.level.replace('*', ''));
-  $('#st-mode').textContent = modeLabel(ST.mode);
+  $('#st-mode').textContent = modeLabel(ST.mode, w);
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
   $('#st-mask').classList.add('hidden');
@@ -2256,7 +2328,7 @@ function showCard() {
   if (ST.mode === 'hint') {
     const lvl = hintLevel(getState(w.id));
     ST.hintLvl = lvl;
-    $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-prompt').innerHTML = esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-mask').innerHTML = hintMask(w, lvl)
       .replace(/·/g, '<i>·</i>').replace(/ /g, '&nbsp;');
     $('#st-mask').classList.remove('hidden');
@@ -2270,7 +2342,7 @@ function showCard() {
     $('#st-typepad').classList.remove('hidden');
     inp.focus();
   } else if (ST.mode === 'type') {
-    $('#st-prompt').innerHTML = esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-prompt').innerHTML = esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = isDrillableNoun(w)
       ? T('st.includeArticle') : T('st.typeGermanAria');
@@ -2280,12 +2352,12 @@ function showCard() {
     $('#st-typepad').classList.remove('hidden');
     inp.focus();
   } else if (ST.mode === 'article') {
-    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
+    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(gloss(w)) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = T('st.whichArticle');
     $('#st-artpad').classList.remove('hidden');
   } else if (ST.mode === 'verb') {
-    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(w.en) + '</small>';
+    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(gloss(w)) + '</small>';
     $('#st-answer').innerHTML = esc(verbFormsLine(w));
     $('#st-hint').textContent = T('st.verbSub');
     $('#st-vprt').value = ''; $('#st-vprt').disabled = false;
@@ -2318,8 +2390,8 @@ function showCard() {
   } else {
     $('#st-prompt').innerHTML = ST.mode === 'de2en'
       ? esc(display(w))
-      : esc(w.en) + '<small>' + esc(posLabel(w.pos)) + '</small>';
-    $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(w.en) : displayMarked(w);
+      : esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(gloss(w)) : displayMarked(w);
     $('#st-hint').textContent = T('st.tapReveal');
     $('#st-pad').classList.remove('hidden');
   }
@@ -2330,10 +2402,9 @@ function showCard() {
   if (pad) replayEnter(pad);
 }
 function posLabel(p) {
-  return ({ noun: 'noun', verb: 'verb', adj: 'adjective', adv: 'adverb',
-    conj: 'conjunction', prep: 'preposition', pron: 'pronoun', num: 'numeral',
-    det: 'determiner', particle: 'particle', intj: 'interjection',
-    prefix: 'prefix' })[p] || p;
+  const k = 'pos.' + p;
+  const t = T(k);
+  return t === k ? p : t;
 }
 function reveal() {
   if (ST.revealed || ST.i >= ST.queue.length) return;
@@ -2684,7 +2755,8 @@ function renderBrowse() {
       if (stf === 'known' && s !== 'known') continue;
       if (stf === 'leech' && s !== 'leech') continue;
     }
-    if (q && !w.lemma.toLowerCase().includes(q) && !w.en.toLowerCase().includes(q)) continue;
+    if (q && !w.lemma.toLowerCase().includes(q) && !w.en.toLowerCase().includes(q)
+      && !gloss(w).toLowerCase().includes(q)) continue;
     out.push(w);
     if (out.length >= 300) break;
   }
@@ -2696,7 +2768,7 @@ function renderBrowse() {
     const lv = w.level.replace('*', '');
     return `<div class="wrow" data-id="${w.id}">
       <span class="pill p-${lv}">${lv}</span>
-      <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
+      <div><b>${esc(display(w))}</b><span>${esc(gloss(w))}</span></div>
       <span style="color:var(--faint);font-size:16px;width:18px;text-align:center">${badge}</span>
     </div>`;
   }).join('') || `<div class="empty">${T('br.noMatch')}</div>`;
@@ -2794,7 +2866,7 @@ function renderStats() {
         const lv = w.level.replace('*', '');
         return `<div class="wrow" data-leech="${w.id}">
           <span class="pill p-${lv}">${lv}</span>
-          <div><b>${esc(display(w))}</b><span>${esc(w.en)}</span></div>
+          <div><b>${esc(display(w))}</b><span>${esc(gloss(w))}</span></div>
           <span style="color:var(--blue-lt);font-size:13px">${T('stats.restart')}</span>
         </div>`;
       }).join('')}</div>
@@ -2880,6 +2952,11 @@ $('#set-lang').addEventListener('click', e => {
   buildNav();
   go(current);              // redraw the visible screen in the new language
   toast(T('toast.lang'));
+  // the meanings live in a separate 200 KB file that only Spanish needs, so it
+  // is fetched on the first switch and redraws again once it lands
+  if (lang() === 'es' && !Object.keys(A.glosses).length) {
+    loadGlosses().then(() => go(current));
+  }
 });
 $('#scope').addEventListener('change', e => {
   const k = e.target.dataset.scope;
@@ -2960,6 +3037,7 @@ async function boot() {
     // loads after first paint. Until it arrives, cloze cards fall back to
     // typing — no waiting, and no failure mode if it never arrives.
     loadSentences();
+    if (lang() === 'es') loadGlosses().then(() => go(current));
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
@@ -2981,6 +3059,7 @@ window.__wm = {
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
+  gloss, glossLang, loadGlosses, posLabel,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,
