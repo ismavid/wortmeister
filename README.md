@@ -68,14 +68,45 @@ the screen you open most never asks you to read anything. Reviews come first,
 new words are interleaved so they are spread through the session rather than
 front-loaded.
 
-At ~25 new/day the daily load settles around 25–30 minutes.
+At 5 new/day the daily load settles around 10–12 minutes.
+
+---
+
+## Meeting a word
+
+**Five new words a day**, and each one gets a page of its own before it is
+ever asked anything: the headword with its article and gender shape, the
+plural or the principal parts and any preposition it governs, the meaning in
+**both English and Spanish**, and one real sentence with the word picked out.
+The parts arrive in reading order rather than all at once — the stagger is
+what makes it feel like being shown something rather than shown everything.
+
+*Got it* does not answer the card. It marks the word introduced and hands you
+the same word as a normal question. Nothing is scheduled, logged or graded by
+reading, so a word you merely met does not age.
+
+A word is introduced exactly once, derived from having never answered it — so
+nothing already studied is re-introduced, and a leech you restart from scratch
+is met again properly. Pairing rounds skip words you have not met, because
+matching something you have never seen is guessing, not recall.
+
+### Why five
+
+Simulated through the real scheduler at 85% accuracy, 5 new words a day
+settles at about **40 reviews a day** — roughly 50 cards, **10–12 minutes**,
+well inside a 30–40 minute budget. It reaches about **370 new words** before
+11 November.
+
+That is a deliberate trade: far less coverage, in exchange for words that
+actually stay. Raise it in **Settings → New words per day** if you want the
+other side of it — 10/day is about 110 cards and 20 minutes.
 
 ---
 
 ## Study modes
 
-A word does not stay on flip cards. It moves from recognition to recall to
-production as you answer it:
+After the introduction, a word does not stay on flip cards. It moves from
+recognition to recall to production as you answer it:
 
 | Reps | Mode | Prompt | Answer |
 |---|---|---|---|
@@ -355,7 +386,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-517 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+538 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

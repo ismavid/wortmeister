@@ -1,5 +1,5 @@
 /* Offline shell. Bump CACHE when any asset changes. */
-const CACHE = 'wortmeister-v16';
+const CACHE = 'wortmeister-v17';
 const ASSETS = [
   './', './index.html', './app.js', './manifest.webmanifest',
   './data/vocab.v1.json', './data/sentences.v1.json', './data/glosses.es.v1.json', './icons/icon-192.png', './icons/icon-512.png'

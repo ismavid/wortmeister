@@ -35,11 +35,12 @@ const CFG = {
   FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
   SIBLING_GAP: 5,                        // cards to keep between related words
   MASTER_DAYS: 21,                       // interval at which a word is "learned"
+  NEW_CAP: 5,                            // most new words a day may introduce
   MIN_DAY: 20,                           // cards that still count as a day done
   FREEZE_EVERY: 7,                       // clean days earned per streak freeze
   FREEZE_MAX: 2,
   defaults: {
-    exam: '2026-11-11', newPerDay: 0, maxReviews: 250,
+    exam: '2026-11-11', newPerDay: 5, maxReviews: 250,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
     streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en'
   }
@@ -50,7 +51,8 @@ const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
 const MODE_LABEL = {
   de2en: 'German → English', en2de: 'English → German', type: 'Type it',
   article: 'Article', verb: 'Verb forms', rection: 'Preposition',
-  match: 'Match', cloze: 'In a sentence', hint: 'Fill it in'
+  match: 'Match', cloze: 'In a sentence', hint: 'Fill it in',
+  intro: 'New word'
 };
 /* How much of the word the "Fill it in" mode gives away, by level.
    Level rises only when you answer correctly — getting it wrong should never
@@ -116,6 +118,10 @@ const I18N = {
     'tg.undo': 'Undo last', 'tg.technical': 'Technical',
 
     'st.title': 'Study',
+    'st.gotIt': 'Got it',
+    'in.new': 'New word',
+    'in.plural': 'Plural',
+    'in.sep': 'separable',
     'st.tapReveal': 'Tap to reveal',
     'st.showAnswer': 'Show answer',
     'st.again': 'Again', 'st.hard': 'Hard', 'st.good': 'Good', 'st.easy': 'Easy',
@@ -151,6 +157,7 @@ const I18N = {
     'mode.type': 'Type it', 'mode.article': 'Article', 'mode.verb': 'Verb forms',
     'mode.rection': 'Preposition', 'mode.match': 'Match',
     'mode.cloze': 'In a sentence', 'mode.hint': 'Fill it in',
+    'mode.intro': 'New word',
 
     'br.title': 'Words',
     'br.search': 'Search German or English',
@@ -273,6 +280,10 @@ const I18N = {
     'tg.undo': 'Deshacer', 'tg.technical': 'Técnica',
 
     'st.title': 'Estudiar',
+    'st.gotIt': 'Entendido',
+    'in.new': 'Palabra nueva',
+    'in.plural': 'Plural',
+    'in.sep': 'separable',
     'st.tapReveal': 'Toca para ver',
     'st.showAnswer': 'Ver respuesta',
     'st.again': 'Otra vez', 'st.hard': 'Difícil', 'st.good': 'Bien',
@@ -313,6 +324,7 @@ const I18N = {
     'mode.verb': 'Formas verbales',
     'mode.rection': 'Preposición', 'mode.match': 'Parejas',
     'mode.cloze': 'En una frase', 'mode.hint': 'Complétala',
+    'mode.intro': 'Palabra nueva',
 
     'br.title': 'Palabras',
     'br.search': 'Buscar en alemán o español',
@@ -1359,11 +1371,19 @@ function remainingToLearn() {
   }
   return n;
 }
+/**
+ * New words to introduce today. An explicit setting always wins; automatic
+ * paces towards the exam but is capped at CFG.NEW_CAP, because the point of
+ * this app stopped being coverage and became retention. Five a day, each with
+ * an introduction card and then eight or so reviews spread over a month, is
+ * about ten minutes of work — the cap is the thing that keeps a session
+ * finishable, not the review limit.
+ */
 function autoNewTarget(remaining) {
   if (A.set.newPerDay > 0) return A.set.newPerDay;
   const left = remaining == null ? remainingToLearn() : remaining;
   const need = Math.ceil(left / daysToExam());
-  return Math.max(10, Math.min(60, need));
+  return Math.max(1, Math.min(CFG.NEW_CAP, need));
 }
 
 /** Today's session: all due reviews (capped) interleaved with new words. */
@@ -1406,6 +1426,11 @@ function buildSession() {
 function pickMode(w) {
   const st = getState(w.id);
   const reps = st ? st.r : 0;
+
+  // Never answered, and not yet introduced in this session: meet it properly
+  // before being asked anything. Derived from reps, so no stored field and no
+  // migration — a word you have already studied is never re-introduced.
+  if (reps === 0 && !isIntroduced(w.id)) return 'intro';
 
   // Every fourth rep, not every third: production below also keys on % 3, and
   // on the same modulus the article slot would swallow every type/cloze slot a
@@ -2106,13 +2131,22 @@ const ST = {
    and lets the grade buttons hijack the round. */
 const AUTO_MODES = {
   type: true, article: true, verb: true, rection: true, match: true,
-  cloze: true, hint: true
+  cloze: true, hint: true, intro: true
 };
+/** Words introduced in this session. Session-scoped on purpose: nothing is
+    written, so the card cannot touch a review record. A word you quit on
+    before answering is simply introduced again next time. */
+let INTRO = new Set();
+function markIntroduced(id) { INTRO.add(id); }
+function isIntroduced(id) { return INTRO.has(id); }
+function clearIntroduced() { INTRO = new Set(); }
+
 /** Pairing-round state. Separate from ST because a round spans five cards. */
 const MT = { words: null, miss: null, pairedIds: null, sel: null, t0: 0 };
 
 function startStudy() {
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
+  clearIntroduced();
   ST.wrong = 0; ST.t0session = Date.now();
   MT.words = null;
   // open with a pairing round when there are enough lightly-seen words, and
@@ -2141,7 +2175,7 @@ function startStudy() {
 function hidePads() {
   ['#st-pad', '#st-grades', '#st-typepad', '#st-artpad', '#st-verbpad',
     '#st-prepad', '#st-casepad', '#st-matchpad', '#st-clozepad',
-    '#st-result', '#st-donepad']
+    '#st-result', '#st-donepad', '#st-intropad']
     .forEach(s => $(s).classList.add('hidden'));
 }
 
@@ -2157,7 +2191,12 @@ function pickMatchRound(queue, want) {
   for (const w of queue) {
     if (seen.has(w.id)) continue;
     const st = getState(w.id);
-    if ((st ? st.r : 0) > 2) continue;
+    const reps = st ? st.r : 0;
+    // Only words you have actually met. Matching a word you have never been
+    // shown is a guessing game, not a recall test — and since a new word now
+    // gets an introduction card first, "never met" is a real state again.
+    if (reps === 0 && !isIntroduced(w.id)) continue;
+    if (reps > 2) continue;
     if (eligible.some(x => familyKey(x) === familyKey(w))) continue;  // no siblings
     seen.add(w.id);
     eligible.push(w);
@@ -2321,11 +2360,20 @@ function showCard() {
   $('#st-answer').classList.add('hidden');
   $('#st-gram').classList.add('hidden');
   $('#st-mask').classList.add('hidden');
+  $('#st-intro').classList.add('hidden');
   $('#st-gram').innerHTML = grammar(w);
-  $('#st-face').classList.toggle('top', !!AUTO_MODES[ST.mode]);
+  $('#st-face').classList.toggle('top', !!AUTO_MODES[ST.mode] && ST.mode !== 'intro');
   hidePads();
 
-  if (ST.mode === 'hint') {
+  if (ST.mode === 'intro') {
+    $('#st-prompt').innerHTML = '';
+    $('#st-hint').textContent = '';
+    $('#st-intro').innerHTML = introHTML(w);
+    $('#st-intro').classList.remove('hidden');
+    $('#st-intropad').classList.remove('hidden');
+    // hearing it once on the first meeting is most of what makes it stick
+    if (A.set.speak) say(w.lemma, 'de-DE');
+  } else if (ST.mode === 'hint') {
     const lvl = hintLevel(getState(w.id));
     ST.hintLvl = lvl;
     $('#st-prompt').innerHTML = esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
@@ -2566,6 +2614,69 @@ function submitArticle(picked) {
 }
 
 /* ---- verb forms ---- */
+/**
+ * The inflections worth seeing on first meeting: the plural for a noun, the
+ * principal parts for a verb, the preposition it governs. Not the whole
+ * grammar block — that one also lists word family and belongs on the reveal.
+ */
+function introForms(w) {
+  const bits = [];
+  if (w.pos === 'noun' && w.plural) {
+    bits.push('<b>' + T('in.plural') + '</b> die ' + esc(w.plural));
+  } else if (w.pos === 'verb') {
+    if (w.prt) bits.push('<b>Präteritum</b> ' + esc(w.prt));
+    if (w.pp) {
+      const a = auxFor(w);
+      const aux = a === 'both' ? 'haben/sein' : a;
+      bits.push('<b>Partizip II</b> ' + esc((aux ? aux + ' ' : '') + w.pp));
+    }
+    if (w.sep && w.p3) bits.push('<b>' + T('in.sep') + '</b> ' + esc(w.p3));
+    const pats = rectionFor(w);
+    if (pats && pats[0]) {
+      const p = pats[0];
+      bits.push('<b>+</b> ' + esc((p.reflexive ? 'sich ' : '') + w.lemma + ' ' + p.prep) +
+        (p.kase === 'Dativ' || p.kase === 'Akkusativ' ? ' + ' + esc(p.kase) : ''));
+    }
+  }
+  return bits.join('<br>');
+}
+
+/** One real sentence with the word picked out, plus its translation. */
+function introSentence(w) {
+  const list = sentencesFor(w);
+  if (!list || !list.length) return '';
+  const [de, at, len, en] = list[0];
+  const marked = esc(de.slice(0, at)) + '<em>' + esc(de.slice(at, at + len)) +
+    '</em>' + esc(de.slice(at + len));
+  return '<div class="in-sent"><b>' + marked + '</b><span>' + esc(en) + '</span></div>';
+}
+
+/**
+ * The whole introduction. Meanings are ordered native-language first, because
+ * the point of the card is recognition, and the language you think in is the
+ * one that does that fastest.
+ */
+function introHTML(w) {
+  const es = A.glosses[w.id];
+  const rows = [];
+  const enRow = '<div class="in-mean"><i>EN</i><span>' + esc(w.en) + '</span></div>';
+  const esRow = es ? '<div class="in-mean"><i>ES</i><span>' + esc(es) + '</span></div>' : '';
+  if (lang() === 'es' && esRow) { rows.push(esRow, enRow); } else { rows.push(enRow); if (esRow) rows.push(esRow); }
+  const forms = introForms(w);
+  return '<div class="in-new">' + T('in.new') + '</div>' +
+    '<div class="in-word">' + displayHead(w) + '</div>' +
+    (forms ? '<div class="in-forms">' + forms + '</div>' : '') +
+    rows.join('') +
+    introSentence(w);
+}
+
+/** Headword with its gender shape, without the plural display() appends. */
+function displayHead(w) {
+  const m = genderMark(w);
+  const head = (w.pos === 'noun' && w.article ? w.article + ' ' : '') + w.lemma;
+  return (m ? '<span class="gmark">' + m + '</span>' : '') + esc(head);
+}
+
 function verbFormsLine(w) {
   const a = auxFor(w);
   return [w.prt, w.pp, a === 'both' ? 'haben/sein' : a].join(' · ');
@@ -2734,6 +2845,15 @@ document.addEventListener('keydown', e => {
 $('#st-check').addEventListener('click', submitTyped);
 $$('[data-art]').forEach(b =>
   b.addEventListener('click', () => submitArticle(b.dataset.art)));
+/* Reading the card is not answering it: mark it introduced and redraw the
+   same queue position, which now picks the real first mode. Nothing is
+   scheduled, logged or written. */
+$('#st-introgo').addEventListener('click', () => {
+  const w = ST.queue[ST.i];
+  if (!w || ST.mode !== 'intro') return;
+  markIntroduced(w.id);
+  showCard();
+});
 $('#st-continue').addEventListener('click', () => {
   $('#st-result').classList.add('hidden');
   showCard();
@@ -2954,9 +3074,7 @@ $('#set-lang').addEventListener('click', e => {
   toast(T('toast.lang'));
   // the meanings live in a separate 200 KB file that only Spanish needs, so it
   // is fetched on the first switch and redraws again once it lands
-  if (lang() === 'es' && !Object.keys(A.glosses).length) {
-    loadGlosses().then(() => go(current));
-  }
+  if (!Object.keys(A.glosses).length) loadGlosses().then(() => go(current));
 });
 $('#scope').addEventListener('change', e => {
   const k = e.target.dataset.scope;
@@ -3037,7 +3155,9 @@ async function boot() {
     // loads after first paint. Until it arrives, cloze cards fall back to
     // typing — no waiting, and no failure mode if it never arrives.
     loadSentences();
-    if (lang() === 'es') loadGlosses().then(() => go(current));
+    // both meanings appear on every introduction card, so this is no longer
+    // conditional on the interface language
+    loadGlosses().then(() => { if (current === 'study' || lang() === 'es') go(current); });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
@@ -3060,6 +3180,8 @@ window.__wm = {
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
   gloss, glossLang, loadGlosses, posLabel,
+  introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
+  markIntroduced, isIntroduced, clearIntroduced,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

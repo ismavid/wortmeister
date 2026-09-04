@@ -45,8 +45,9 @@ changes. Phases 1, 2 and 3 are all shipped.
      record being rewritten.
    - **Card meanings are translated too**, via `data/glosses.es.v1.json` —
      a separate file keyed by the ids already in `vocab.v1.json`, like the
-     sentence bank, covering all 7,035 in-scope words. It is fetched only when
-     the interface is Spanish. **The fallback is per word**: `gloss(w)` returns
+     sentence bank, covering all 7,035 in-scope words. It is fetched on every
+     boot, not only in Spanish, because the introduction card shows both
+     meanings whatever the interface is set to. **The fallback is per word**: `gloss(w)` returns
      English for anything uncovered and `modeLabel(k, w)` says `Alemán →
      Inglés` for that card, so the pill never promises a translation that is
      not there. Never inline Spanish into `vocab.v1.json`.
@@ -95,7 +96,31 @@ changes. Phases 1, 2 and 3 are all shipped.
     way** — it was measured, and at 42px `der Betrieb, Betriebe` wraps to two
     lines. The study type is already at the width-optimal size.
 
-15. **Never `var()` a custom property that `:root` does not declare.** An
+15. **Five new words a day.** `CFG.NEW_CAP` caps automatic pacing and
+    `CFG.defaults.newPerDay` ships at 5; an explicit setting still wins. The
+    app stopped being about coverage on 29 Aug 2026 — Ismael asked to slow
+    down and actually internalise words. Simulated through the real scheduler
+    at 85% accuracy, 5/day settles at ~40 reviews/day, so about 50 cards and
+    10–12 minutes; it reaches ~370 new words before 11 November. Do not raise
+    the cap to "cover more" — that trade was made deliberately.
+
+16. **A word is introduced before it is ever asked.** `pickMode()` returns
+    `intro` when `st.r === 0` and the word is not yet in `INTRO`, a
+    session-scoped Set. **Derived from reps, so there is no stored field and no
+    migration**, and a word already studied is never re-introduced. The card
+    writes nothing: it neither schedules, logs nor grades, and `intro` is in
+    `AUTO_MODES` so a face tap cannot reveal or grade it. `Got it` marks it
+    introduced and redraws the *same* queue position, which then picks the real
+    first mode. A pairing round may not contain an un-introduced word either —
+    matching something you have never seen is guessing, not recall.
+
+17. **An entrance animation must never be the only thing making content
+    visible.** Use `animation-fill-mode: backwards` with a visible resting
+    state, never `opacity: 0` plus `forwards` — a paused compositor, a
+    hidden tab or a dropped keyframe then leaves the element blank. The intro
+    card was caught doing exactly this before it shipped. The suite lints it.
+
+18. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -114,7 +139,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        517 assertions, jsdom + fake-indexeddb
+test/test_app.js        538 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -185,7 +210,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 517 passed, then 22 passed
+cd test && npm install && npm test     # expect: 538 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

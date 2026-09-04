@@ -94,6 +94,23 @@ function A_extendedSample(w){
     }
     ok('safe-area insets are never counted twice', offenders.length === 0,
       offenders.join(' | '));
+
+    // An entrance animation must not be the only thing that makes content
+    // visible. `opacity:0` in the resting state plus `forwards` means a
+    // compositor that never runs the keyframes — a hidden tab, a throttled
+    // background, a browser that drops the animation — leaves the element
+    // blank. Use `backwards` so the resting state is visible and the animation
+    // only supplies the entrance. The milestone bar already shipped invisible
+    // once for the neighbouring reason.
+    const blind = [];
+    for (const rule of css.split('}')) {
+      if (!/animation\s*:/.test(rule)) continue;
+      if (!/opacity\s*:\s*0\b/.test(rule)) continue;
+      if (/backwards|\bboth\b/.test(rule)) continue;
+      blind.push((rule.split('{')[0] || '').trim().split('\n').pop().trim());
+    }
+    ok('no element is visible only while its animation runs',
+      blind.length === 0, blind.join(' | '));
   }
 
   // ---------------------------------------------------------- boot in jsdom
@@ -186,6 +203,18 @@ function A_extendedSample(w){
   ok('home offers Study once words are sorted',
     !!w.document.querySelector('#todo [data-go="study"]'),
     w.document.getElementById('todo').textContent.trim().replace(/\s+/g, ' '));
+  // Two things the pairing round now needs. It may only use words you have
+  // already met, so give a handful of the sorted words a rep; and the daily
+  // pace is five, which is a shorter session than a round of six pairs fits
+  // in, so widen it for the mechanics tested here.
+  M.A.set.newPerDay = 40;
+  {
+    let n = 0;
+    for (const st of M.A.state.values()) {
+      if (st.s !== 'queued' || n >= 14) continue;
+      st.r = 1; n++;
+    }
+  }
   click('[data-go="study"]');
   await sleep(60);
   ok('study view visible', w.document.getElementById('v-study').classList.contains('on'));
@@ -366,8 +395,28 @@ function A_extendedSample(w){
   ok('preview returns four labels', prev.length === 4 && prev.every(x => x), prev.join(' / '));
 
   // queue behaviour
-  ok('daily new target within bounds',
-    M.autoNewTarget() >= 10 && M.autoNewTarget() <= 60, M.autoNewTarget());
+  // The pace is deliberately small now: the app is for retention, not coverage.
+  ok('the shipped default pace is five new words a day',
+    M.CFG.defaults.newPerDay === 5, M.CFG.defaults.newPerDay);
+  ok('and the automatic cap agrees with it', M.CFG.NEW_CAP === 5, M.CFG.NEW_CAP);
+  ok('daily new target is positive and capped',
+    M.autoNewTarget() > 0 &&
+    M.autoNewTarget() <= Math.max(M.CFG.NEW_CAP, M.A.set.newPerDay),
+    M.autoNewTarget());
+  ok('automatic pacing never exceeds the cap', (() => {
+    const keep = M.A.set.newPerDay;
+    M.A.set.newPerDay = 0;                 // 0 means "work it out for me"
+    const auto = M.autoNewTarget();
+    M.A.set.newPerDay = keep;
+    return auto > 0 && auto <= M.CFG.NEW_CAP;
+  })());
+  ok('an explicit setting still wins over the cap', (() => {
+    const keep = M.A.set.newPerDay;
+    M.A.set.newPerDay = 25;
+    const n = M.autoNewTarget();
+    M.A.set.newPerDay = keep;
+    return n === 25;
+  })());
   ok('scope excludes B2-extended by default',
     !M.inScope(A_extendedSample(w)), 'tier check');
 
@@ -433,6 +482,76 @@ function A_extendedSample(w){
     M.applyI18n();
     ok('switching back restores English',
       doc.querySelector('[data-i18n="set.title"]').textContent === before);
+  }
+
+  // ------------------------------------------------- word introduction card
+  // The first meeting with a word. It is presentational only: it must never
+  // schedule, log or write anything, or a card you merely read would age.
+  console.log('\n== introduction card ==');
+  {
+    const noun = M.A.words.find(x => M.inScope(x) && x.pos === 'noun' && x.article && x.plural);
+    const verb = M.A.words.find(x => M.inScope(x) && x.pos === 'verb' && x.prt && x.pp);
+    // the sentence bank loads after first paint, so seed one rather than
+    // depending on whether it has arrived by the time this runs
+    const withSent = M.A.words.find(x => M.inScope(x) && x.id !== noun.id && x.id !== verb.id);
+    M.A.sentences[withSent.id] =
+      [['Das ist ' + withSent.lemma + ' hier.', 8, withSent.lemma.length, 'That is ' + withSent.en + ' here.']];
+    const noSent = M.A.words.find(x => M.inScope(x) && !M.sentencesFor(x));
+
+    ok('it is an auto mode, so it can never be revealed or graded',
+      M.AUTO_MODES.intro === true);
+    ok('it has a label like every other mode', M.modeLabel('intro') === 'New word',
+      M.modeLabel('intro'));
+
+    const h = M.introHTML(noun);
+    ok('it shows the headword with its article', h.includes(M.esc(noun.article + ' ' + noun.lemma)));
+    ok('it shows the English meaning', h.includes(M.esc(noun.en)));
+    ok('it shows the Spanish meaning when the bank is loaded', (() => {
+      const keep = M.A.glosses;
+      M.A.glosses = { [noun.id]: 'PRUEBA' };
+      const r = M.introHTML(noun).includes('PRUEBA');
+      M.A.glosses = keep;
+      return r;
+    })());
+    ok('it shows the plural for a noun',
+      M.introForms(noun).includes(M.esc(noun.plural)), M.introForms(noun));
+    ok('it shows the principal parts for a verb',
+      M.introForms(verb).includes(M.esc(verb.prt)) && M.introForms(verb).includes(M.esc(verb.pp)),
+      M.introForms(verb));
+    ok('it shows an example sentence where one exists',
+      M.introSentence(withSent).includes('in-sent') &&
+      M.introSentence(withSent).includes('<em>'));
+    ok('and renders fine for a word without one', M.introSentence(noSent) === '' &&
+      typeof M.introHTML(noSent) === 'string' && M.introHTML(noSent).length > 0);
+
+    // the native language comes first, because that is the one that reads fastest
+    ok('English first in English', (() => {
+      M.A.set.lang = 'en';
+      const x = M.introHTML(noun);
+      return x.indexOf('>EN<') < x.indexOf('>ES<') || x.indexOf('>ES<') === -1;
+    })());
+    ok('Spanish first in Spanish', (() => {
+      const keep = M.A.glosses;
+      M.A.glosses = { [noun.id]: 'PRUEBA' };
+      M.A.set.lang = 'es';
+      const x = M.introHTML(noun);
+      const r = x.indexOf('>ES<') < x.indexOf('>EN<');
+      M.A.set.lang = 'en'; M.A.glosses = keep;
+      return r;
+    })());
+
+    // nothing is written by meeting a word
+    const before = JSON.stringify(Array.from(M.A.state.entries()));
+    M.introHTML(noun); M.introForms(verb); M.introSentence(withSent);
+    ok('reading a word changes no review record',
+      JSON.stringify(Array.from(M.A.state.entries())) === before);
+
+    // a pairing round may not use a word that has not been met
+    M.clearIntroduced();
+    const unseen = [noun, verb, withSent, noSent].filter(Boolean);
+    for (const x of unseen) M.A.state.delete(x.id);
+    ok('an unmet word is never put in a pairing round',
+      M.pickMatchRound(unseen.concat(unseen), Math.min(4, unseen.length)) === null);
   }
 
   // ------------------------------------------------- Spanish card meanings
@@ -1179,7 +1298,14 @@ function A_extendedSample(w){
   };
   const modeAt = (word, reps) => { stage(word, reps); return M.pickMode(word); };
 
-  ok('reps 0 is flip DE→EN', modeAt(plainWord, 0) === 'de2en', modeAt(plainWord, 0));
+  M.clearIntroduced();
+  ok('a word you have never answered is introduced first',
+    modeAt(plainWord, 0) === 'intro', modeAt(plainWord, 0));
+  M.markIntroduced(plainWord.id);
+  ok('reps 0 is flip DE→EN once introduced',
+    modeAt(plainWord, 0) === 'de2en', modeAt(plainWord, 0));
+  ok('the introduction does not repeat within a session',
+    modeAt(plainWord, 0) === 'de2en');
   ok('reps 1 is flip DE→EN', modeAt(plainWord, 1) === 'de2en');
   ok('reps 2 switches to filling it in', modeAt(plainWord, 2) === 'hint', modeAt(plainWord, 2));
   ok('reps 4 still fills it in', modeAt(plainWord, 4) === 'hint');
@@ -1196,6 +1322,7 @@ function A_extendedSample(w){
     modeAt(verbRect, 6) === 'verb', modeAt(verbRect, 6));
   ok('a verb with both drills alternates back at reps 9',
     modeAt(verbRect, 9) === 'rection', modeAt(verbRect, 9));
+  M.markIntroduced(nounWord.id);
   ok('a noun starts on flip too', modeAt(nounWord, 0) === 'de2en');
   ok('a noun interleaves the article drill from rep 2',
     modeAt(nounWord, 2) === 'article', modeAt(nounWord, 2));
@@ -1630,6 +1757,8 @@ function A_extendedSample(w){
   await openStudy(plainWord, 0);
   const startLen = M.ST.queue.length;
   ok('a staged session holds exactly one card', startLen === 1, startLen);
+  // an unmet word opens on its introduction; read it before answering
+  if (M.ST.mode === 'intro') { click('#st-introgo'); await sleep(6); }
   for (let k = 0; k < 6; k++) {
     click('#st-reveal'); await sleep(4);
     click('[data-grade="0"]'); await sleep(4);
@@ -1653,7 +1782,11 @@ function A_extendedSample(w){
   ok('a rehabilitated leech is queued again', reh.s === 'queued', reh.s);
   ok('its lapse counter is cleared', reh.l === 0, reh.l);
   ok('its reps restart so it returns to recognition', reh.r === 0, reh.r);
-  ok('it is asked as a flip card again', M.pickMode(plainWord) === 'de2en',
+  M.clearIntroduced();
+  ok('a restarted leech is introduced again from scratch',
+    M.pickMode(plainWord) === 'intro', M.pickMode(plainWord));
+  M.markIntroduced(plainWord.id);
+  ok('and then asked as a flip card', M.pickMode(plainWord) === 'de2en',
     M.pickMode(plainWord));
   ok('its ease is lifted out of the floor', reh.e >= 2.0, reh.e);
   ok('its ease stays within the clamp', reh.e <= M.CFG.EASE_MAX, reh.e);

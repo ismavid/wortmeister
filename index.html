@@ -266,6 +266,52 @@ body.kb .pad{padding-top:8px;gap:7px}
 body.kb .typein.sm{min-height:44px}
 .pad.enter{animation:cardin .3s cubic-bezier(.32,.72,0,1) .04s backwards}
 .word{font-size:clamp(32px,9vw,48px);font-weight:700;letter-spacing:-.045em;line-height:1.06}
+
+/* ---------- word introduction ----------
+   The first time a word appears it gets a page of its own: how it is written,
+   what it means in both languages, how it inflects, and one real sentence.
+   The parts arrive in reading order rather than all at once — the stagger is
+   what makes it feel like being shown something instead of shown everything. */
+.intro{display:flex;flex-direction:column;align-items:center;gap:0;width:100%;
+  max-width:340px;text-align:center}
+.intro>*{animation:introin .5s cubic-bezier(.32,.72,0,1) backwards}
+.intro>*:nth-child(1){animation-delay:.04s}
+.intro>*:nth-child(2){animation-delay:.16s}
+.intro>*:nth-child(3){animation-delay:.26s}
+.intro>*:nth-child(4){animation-delay:.36s}
+.intro>*:nth-child(5){animation-delay:.46s}
+.intro>*:nth-child(6){animation-delay:.56s}
+@keyframes introin{
+  from{opacity:0;transform:translateY(9px) scale(.985)}
+  to{opacity:1;transform:none}
+}
+.in-new{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--blue-lt);margin-bottom:12px}
+.in-word{font-size:clamp(30px,8.4vw,44px);font-weight:700;letter-spacing:-.045em;
+  line-height:1.06;margin-bottom:3px}
+.in-word .gmark{margin-right:.28em;font-weight:400;opacity:.5}
+/* a word with no plural or principal parts skips the forms row, so the gap it
+   was carrying has to come from somewhere */
+.in-word+.in-mean{margin-top:20px}
+.in-forms{font-size:14px;color:var(--faint);margin-bottom:20px;line-height:1.5}
+.in-forms b{color:var(--dim);font-weight:600}
+.in-mean{display:flex;gap:11px;align-items:baseline;width:100%;text-align:left;
+  padding:11px 0;border-top:1px solid var(--hair)}
+.in-mean i{flex:0 0 26px;font-style:normal;font-size:10px;font-weight:700;
+  letter-spacing:.09em;color:var(--faint);padding-top:4px}
+.in-mean span{flex:1;font-size:17px;line-height:1.35;letter-spacing:-.015em}
+.in-sent{width:100%;text-align:left;margin-top:16px;padding:14px 15px;
+  border-radius:14px;background:var(--glass);backdrop-filter:var(--blur);
+  border:1px solid var(--hair)}
+.in-sent b{display:block;font-size:16px;font-weight:500;line-height:1.4;
+  letter-spacing:-.015em}
+.in-sent b em{font-style:normal;color:var(--blue-lt);font-weight:700}
+.in-sent span{display:block;margin-top:5px;font-size:13px;color:var(--faint);
+  line-height:1.4}
+body.kb .intro{display:none}
+@media (prefers-reduced-motion:reduce){
+  .intro>*{animation:none}
+}
 .word small{display:block;font-size:12px;font-weight:600;color:var(--faint);
   margin-top:14px;text-transform:uppercase;letter-spacing:.09em}
 /* an English gloss is prose, not a label — it keeps its own case */
@@ -513,6 +559,7 @@ select{appearance:none;-webkit-appearance:none}
     <div class="stage">
       <div class="face" id="st-face">
         <div class="meta"><span id="st-mode" class="pill tag"></span></div>
+        <div class="intro hidden" id="st-intro"></div>
         <div class="word" id="st-prompt"></div>
         <div class="mask hidden" id="st-mask"></div>
         <div class="answer hidden" id="st-answer"></div>
@@ -595,6 +642,11 @@ select{appearance:none;-webkit-appearance:none}
           <div class="rtext"><b id="st-rtitle"></b><span id="st-rbody"></span></div>
         </div>
         <button class="btn" id="st-continue" data-i18n="st.continue">Continue</button>
+      </div>
+
+      <!-- first meeting with a word: read it, then answer it -->
+      <div class="pad hidden" id="st-intropad">
+        <button class="btn" id="st-introgo" data-i18n="st.gotIt">Got it</button>
       </div>
 
       <!-- end of session -->
