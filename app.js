@@ -40,7 +40,7 @@ const CFG = {
   FREEZE_EVERY: 7,                       // clean days earned per streak freeze
   FREEZE_MAX: 2,
   defaults: {
-    exam: '2026-11-11', newPerDay: 5, maxReviews: 250,
+    exam: '2026-11-11', newPerDay: 5, maxReviews: 60,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
     streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en'
   }
@@ -1336,13 +1336,36 @@ function untriaged() {
   for (const w of A.words) if (inScope(w) && !A.state.has(w.id)) out.push(w);
   return out;
 }
+/**
+ * Reviews still allowed today. The cap is per day, not per session: finishing
+ * used to just rebuild the queue, so a card whose ten-minute step landed after
+ * the session ended came back as a whole new session and the day never ended.
+ * Counted from the history record that already exists, so nothing is migrated.
+ */
+function reviewBudget() {
+  const done = (A.set.history[today()] || {}).rev || 0;
+  return Math.max(0, A.set.maxReviews - done);
+}
+
+/** A card mid-acquisition, as opposed to one on a long interval. */
+function isFragile(st) {
+  return !!st && (st.s === 'learning' || st.s === 'relearning');
+}
+
 function dueList(now) {
   const out = [];
   for (const [id, st] of A.state) {
     if (st.s === 'known' || st.s === 'leech' || st.s === 'queued') continue;
     if (st.d <= now) { const w = A.words[id]; if (w && inScope(w)) out.push(w); }
   }
-  out.sort((a, b) => A.state.get(a.id).d - A.state.get(b.id).d);
+  // A word you just missed comes before words you have known for weeks.
+  // Sorting on due time alone buried it: a card due in ten minutes has a
+  // *later* timestamp than one three days overdue, so the thing most at risk
+  // of being lost sat at the back of the queue behind everything safe.
+  out.sort((a, b) => {
+    const x = A.state.get(a.id), y = A.state.get(b.id);
+    return (isFragile(x) ? 0 : 1) - (isFragile(y) ? 0 : 1) || x.d - y.d;
+  });
   return out;
 }
 function queuedNew() {
@@ -1392,7 +1415,12 @@ function buildSession() {
   const rnd = seededRandom(daySeed());
   // pick the most overdue first, then shuffle: selection should respect the
   // schedule, presentation order within a day should not be predictable
-  const due = shuffleSeeded(dueList(now).slice(0, A.set.maxReviews), rnd);
+  // Selection respects the schedule and the day's budget; presentation order
+  // is shuffled within each band, so the fragile block stays at the front
+  // instead of being scattered through the mature cards.
+  const picked = dueList(now).slice(0, reviewBudget());
+  const due = shuffleSeeded(picked.filter(x => isFragile(A.state.get(x.id))), rnd)
+    .concat(shuffleSeeded(picked.filter(x => !isFragile(A.state.get(x.id))), rnd));
   const doneToday = (A.set.history[today()] || {}).new || 0;
   const want = Math.max(0, autoNewTarget() - doneToday);
   let fresh = queuedNew().slice(0, want);
@@ -1517,6 +1545,18 @@ function heatSeries(days) {
 /* History and lastDay used to be keyed to UTC dates. Translate lastDay once so
    the streak survives the switch; past history keys keep their old labels,
    which only shifts old bars in the 14-day chart by a day. */
+/**
+ * `maxReviews` used to cap a *session* while its label promised a day. As a
+ * day budget the old 250 never binds — the measured load at five new words a
+ * day peaks at 53 — so an install carrying the old default is moved to one
+ * that actually holds. An explicitly chosen number is left alone.
+ */
+function migrateReviewCap() {
+  if (A.set.dayCapped) return;
+  A.set.dayCapped = true;
+  if (A.set.maxReviews === 250) A.set.maxReviews = CFG.defaults.maxReviews;
+}
+
 function migrateDates() {
   if (A.set.tzFixed) return;
   A.set.tzFixed = true;
@@ -1629,7 +1669,7 @@ function overview() {
   }
   const remaining = remainingToLearn();
   const dte = daysToExam();
-  const due = Math.min(dueList(Date.now()).length, A.set.maxReviews);
+  const due = Math.min(dueList(Date.now()).length, reviewBudget());
   const h = A.set.history[today()] || {};
   const newDone = h.new || 0;
   const answered = (h.new || 0) + (h.rev || 0);
@@ -3135,6 +3175,7 @@ async function boot() {
     if (!A.set.medians) A.set.medians = {};
     if (!A.set.history) A.set.history = {};
     migrateDates();
+    migrateReviewCap();
     $('#splashmsg').textContent = T('loading');
     await loadVocab();
     A.state = await DB.all('state');
@@ -3182,6 +3223,7 @@ window.__wm = {
   gloss, glossLang, loadGlosses, posLabel,
   introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
   markIntroduced, isIntroduced, clearIntroduced,
+  reviewBudget, isFragile, migrateReviewCap,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

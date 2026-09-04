@@ -484,6 +484,106 @@ function A_extendedSample(w){
       doc.querySelector('[data-i18n="set.title"]').textContent === before);
   }
 
+  // ------------------------------------------------- daily review budget
+  // The old cap limited a session, not a day, so finishing simply rebuilt the
+  // queue and any card whose ten-minute step landed after the session ended
+  // came back as a fresh session. The day never ended.
+  console.log('\n== daily review budget ==');
+  {
+    const savedState = new Map(M.A.state);
+    const savedHist = JSON.parse(JSON.stringify(M.A.set.history));
+    const savedMax = M.A.set.maxReviews;
+    const now = Date.now(), MIN = 60000, DAY = 86400000;
+    const scope = M.A.words.filter(x => M.inScope(x));
+    const put = (word, s, due, i, r) => {
+      const st = M.newState(); st.s = s; st.d = due; st.i = i; st.r = r;
+      M.A.state.set(word.id, st); return st;
+    };
+
+    M.A.set.maxReviews = 30;
+    M.A.set.history[M.today()] = { new: 0, rev: 0, again: 0 };
+    M.A.state.clear(); M.A.dirty.clear();
+    for (let n = 0; n < 50; n++) put(scope[n], 'review', now - DAY, 10, 8);
+
+    ok('the budget starts at the whole day allowance',
+      M.reviewBudget() === 30, M.reviewBudget());
+    ok('a session is capped by the day, not by the queue',
+      M.buildSession().filter(x => (M.A.state.get(x.id) || {}).s === 'review').length === 30);
+
+    // spend most of the day
+    M.A.set.history[M.today()].rev = 28;
+    ok('the budget shrinks as the day is spent', M.reviewBudget() === 2, M.reviewBudget());
+    ok('Home counts what is left of the day, not what is due',
+      M.overview().due === 2, M.overview().due);
+
+    // spend it entirely: finishing must mean finished
+    M.A.set.history[M.today()].rev = 30;
+    ok('a spent day offers nothing more', M.reviewBudget() === 0);
+    ok('and Home agrees the reviews are done', M.overview().due === 0, M.overview().due);
+    ok('an over-spent day never goes negative', (() => {
+      M.A.set.history[M.today()].rev = 999;
+      return M.reviewBudget() === 0;
+    })());
+
+    // ---- fragile cards come first
+    M.A.set.history[M.today()].rev = 0;
+    M.A.set.maxReviews = 100;
+    M.A.state.clear(); M.A.dirty.clear();
+    for (let n = 0; n < 20; n++) put(scope[n], 'review', now - 3 * DAY, 10, 8);
+    for (let n = 20; n < 24; n++) put(scope[n], 'relearning', now - MIN, 0, 5);
+
+    const list = M.dueList(now);
+    const firstFragile = list.findIndex(x => M.isFragile(M.A.state.get(x.id)));
+    const lastFragile = list.map((x, k) => M.isFragile(M.A.state.get(x.id)) ? k : -1)
+      .filter(k => k >= 0).pop();
+    ok('a card you just missed leads the queue', firstFragile === 0, firstFragile);
+    ok('every fragile card comes before every mature one', lastFragile === 3, lastFragile);
+    ok('mature cards keep most-overdue-first among themselves', (() => {
+      const mature = list.filter(x => !M.isFragile(M.A.state.get(x.id)));
+      for (let k = 1; k < mature.length; k++) {
+        if (M.A.state.get(mature[k].id).d < M.A.state.get(mature[k - 1].id).d) return false;
+      }
+      return true;
+    })());
+    ok('the session keeps the fragile cards at the front', (() => {
+      const q = M.buildSession().filter(x => M.A.state.has(x.id));
+      return q.slice(0, 4).every(x => M.isFragile(M.A.state.get(x.id)));
+    })());
+
+    // ---- the migration
+    ok('an install on the old session cap is moved to a day cap', (() => {
+      const keep = { m: M.A.set.maxReviews, f: M.A.set.dayCapped };
+      M.A.set.maxReviews = 250; delete M.A.set.dayCapped;
+      M.migrateReviewCap();
+      const moved = M.A.set.maxReviews === M.CFG.defaults.maxReviews;
+      M.A.set.maxReviews = keep.m; M.A.set.dayCapped = keep.f;
+      return moved;
+    })());
+    ok('a number you chose yourself is left alone', (() => {
+      const keep = { m: M.A.set.maxReviews, f: M.A.set.dayCapped };
+      M.A.set.maxReviews = 140; delete M.A.set.dayCapped;
+      M.migrateReviewCap();
+      const kept = M.A.set.maxReviews === 140;
+      M.A.set.maxReviews = keep.m; M.A.set.dayCapped = keep.f;
+      return kept;
+    })());
+    ok('the migration runs once', (() => {
+      M.A.set.maxReviews = 250;              // dayCapped is already set
+      M.migrateReviewCap();
+      const untouched = M.A.set.maxReviews === 250;
+      M.A.set.maxReviews = savedMax;
+      return untouched;
+    })());
+
+    ok('the shipped day cap covers the measured peak load',
+      M.CFG.defaults.maxReviews >= 53, M.CFG.defaults.maxReviews);
+
+    M.A.state.clear();
+    for (const [k, v] of savedState) M.A.state.set(k, v);
+    M.A.set.history = savedHist;
+    M.A.set.maxReviews = savedMax;
+  }
+
   // ------------------------------------------------- word introduction card
   // The first meeting with a word. It is presentational only: it must never
   // schedule, log or write anything, or a card you merely read would age.

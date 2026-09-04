@@ -54,8 +54,8 @@ business* in English and *empresa; funcionamiento, operación* in Spanish. It is
 a separate 172 KB file **keyed by the ids already in `vocab.v1.json`**, exactly
 like the sentence bank, so the vocabulary is never rewritten and no id moves.
 
-It loads only when the interface is Spanish, after first paint, and the
-fallback is **per word**: anything the bank does not cover keeps its English
+It loads on every boot, after first paint, because the introduction card
+shows both meanings whatever the interface says. The fallback is **per word**: anything the bank does not cover keeps its English
 gloss and says so on the pill — *Alemán → Inglés* rather than *Alemán →
 Español*. A missing or broken file costs you nothing but the translations.
 
@@ -235,6 +235,36 @@ already at the size the *width* allows.
 
 ---
 
+## A day has a fixed size
+
+**Settings → Maximum reviews per day** is now what it always claimed to be.
+It used to cap a *session*: finishing one simply rebuilt the queue, so a card
+whose ten-minute step landed after the session ended came back as a whole new
+session, and the day never ended. It is now spent against the reviews you have
+actually done today — finish the day and the day is finished.
+
+The default moved from 250 to **60**, because as a day budget 250 never binds:
+the measured peak at five new words a day is 53. An install still carrying the
+old 250 is moved once; a number you chose yourself is left alone.
+
+Below the cap a card you fail still comes back after ten minutes — that is the
+mechanism that makes relearning work, not a bug. What changed is that the day
+can no longer grow without bound.
+
+### The word you just missed goes first
+
+`dueList()` puts **learning and relearning cards ahead of mature ones**, then
+sorts by due time inside each band. Sorting on due time alone buried them: a
+card due in ten minutes carries a *later* timestamp than one three days
+overdue, so the word most at risk of being lost sat at the back of the queue
+behind everything already safe — measured at **position 60 of 66**. It is now
+position 0.
+
+The day-seeded shuffle happens **within** each band, never across it, so the
+fragile block stays at the front.
+
+---
+
 ## Coming back tomorrow
 
 The ring on Home measures **today**, not your lifetime — a lifetime bar sits at
@@ -386,7 +416,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-538 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+553 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

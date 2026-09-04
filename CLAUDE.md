@@ -114,13 +114,32 @@ changes. Phases 1, 2 and 3 are all shipped.
     first mode. A pairing round may not contain an un-introduced word either —
     matching something you have never seen is guessing, not recall.
 
-17. **An entrance animation must never be the only thing making content
+17. **`maxReviews` is a DAY budget, not a session cap.** It always claimed
+    "per day" in Settings; the code capped a session, so finishing simply
+    rebuilt the queue and any card whose ten-minute step landed after the
+    session ended came back as a whole new session — the day never ended.
+    `reviewBudget()` spends it against `history[today].rev`, which already
+    existed, so nothing is migrated. `buildSession()` and `overview()` must
+    both spend the same budget or Home and the session disagree. The default
+    moved 250 → 60 (the measured peak at five new words a day is 53) and
+    `migrateReviewCap()` moves an install still carrying the old 250, once,
+    in memory — boot must never write settings, see the compat suite.
+
+18. **Fragile cards lead the queue.** `dueList()` sorts `learning` and
+    `relearning` ahead of `review`, then by due time. Sorting on due time
+    alone buried them: a card due in ten minutes carries a *later* timestamp
+    than one three days overdue, so the word most at risk sat at the back
+    behind everything already safe — measured at position 60 of 66.
+    `buildSession()` shuffles **within** each band, never across, or the
+    priority is undone by the day-seeded shuffle.
+
+19. **An entrance animation must never be the only thing making content
     visible.** Use `animation-fill-mode: backwards` with a visible resting
     state, never `opacity: 0` plus `forwards` — a paused compositor, a
     hidden tab or a dropped keyframe then leaves the element blank. The intro
     card was caught doing exactly this before it shipped. The suite lints it.
 
-18. **Never `var()` a custom property that `:root` does not declare.** An
+20. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -139,7 +158,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        538 assertions, jsdom + fake-indexeddb
+test/test_app.js        553 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -210,7 +229,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 538 passed, then 22 passed
+cd test && npm install && npm test     # expect: 553 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake
