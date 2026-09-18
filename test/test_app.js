@@ -501,6 +501,17 @@ function A_extendedSample(w){
       fs.readFileSync(path.join(APP, 'data/sentences.v1.json'), 'utf8')).byId;
     M.buildClusters();
 
+    // The feed reads only words that have actually been answered, so give the
+    // whole block a realistic studied set. Restored at the end of the block.
+    const feedStateBackup = new Map(M.A.state);
+    {
+      const pick = M.A.words.filter(x => M.inScope(x) && M.sentencesFor(x)).slice(0, 120);
+      for (const x of pick) {
+        const st = M.newState(); st.s = 'review'; st.r = 3; st.i = 4; st.d = Date.now();
+        M.A.state.set(x.id, st);
+      }
+    }
+
     ok('clusters are found at all', M.A.clusters.length > 200, M.A.clusters.length);
     ok('every cluster holds at least two words',
       M.A.clusters.every(c => c.ids.length >= 2));
@@ -556,9 +567,38 @@ function A_extendedSample(w){
         return pairs.length > 40 && new Set(pairs).size === pairs.length;
       })(), big.filter(p => p.kind === 'sent').length + ' sentence posts');
 
-      // an install with nothing sorted still gets a feed rather than a blank
+      // only answered words qualify: sorting one into the queue is not enough
       M.A.state.clear();
-      ok('a brand-new install still has something to read', M.feedDeck(6).length > 0);
+      for (const x of pick.slice(0, 10)) {
+        const st = M.newState(); st.s = 'queued'; M.A.state.set(x.id, st);
+      }
+      ok('a word only sorted into the queue never reaches the feed',
+        M.feedDeck(6).length === 0, M.feedDeck(6).length);
+      ok('nor does one still marked new', (() => {
+        M.A.state.clear();
+        for (const x of pick.slice(0, 10)) {
+          const st = M.newState(); M.A.state.set(x.id, st);   // s: 'new'
+        }
+        return M.feedDeck(6).length === 0;
+      })());
+      ok('but a single answered word is enough', (() => {
+        M.A.state.clear();
+        const st = M.newState(); st.s = 'learning'; st.r = 1;
+        M.A.state.set(pick[0].id, st);
+        return M.feedDeck(6).length > 0;
+      })());
+      ok('each of the four studied states qualifies', (() => {
+        return ['learning', 'relearning', 'review', 'leech'].every(sName => {
+          M.A.state.clear();
+          const st = M.newState(); st.s = sName; st.r = 3;
+          M.A.state.set(pick[0].id, st);
+          return M.feedDeck(4).length > 0;
+        });
+      })());
+      ok('with nothing studied the feed is empty rather than borrowed', (() => {
+        M.A.state.clear();
+        return M.feedDeck(6).length === 0;
+      })());
 
       M.A.state.clear();
       for (const [k, v] of saveState) M.A.state.set(k, v);
@@ -685,6 +725,10 @@ function A_extendedSample(w){
       w.document.getElementById('br-state').value = '';
       M.renderBrowse();
     }
+
+    // hand the suite back the state it had before this block seeded its own
+    M.A.state.clear();
+    for (const [k, v] of feedStateBackup) M.A.state.set(k, v);
   }
 
   // ------------------------------------------------- daily review budget

@@ -133,15 +133,16 @@ changes. Phases 1, 2 and 3 are all shipped.
     `buildSession()` shuffles **within** each band, never across, or the
     priority is undone by the day-seeded shuffle.
 
-19. **The Feed only ever shows words the user is working on.** `feedWords()`
-    returns words with a review record that is not `known` — sorted, queued,
-    learning, in review, or a leech. Synonym cards are restricted the same way:
-    only clusters touching those words. **Do not widen either to "fill" the
-    feed** — falling back to the whole cluster set was tried and it filled the
-    screen with vocabulary never chosen. With few words there are simply few
-    synonym cards: at 30 words there are none, and that is correct. The only
-    exception is an install with nothing sorted at all, which borrows upcoming
-    words rather than opening blank.
+19. **The Feed only ever shows words the user has ANSWERED.** `FEED_STATES`
+    is the whole rule: `learning`, `relearning`, `review`, `leech`. A word
+    merely sorted into the queue (`queued`) or still `new` is not in the feed —
+    Ismael asked for this on 18 Sep 2026, because a sentence built around a
+    word you have never once been asked is noise, not reinforcement. Synonym
+    cards are restricted the same way: only clusters touching those words.
+    **Do not widen either to "fill" the feed** — the fall-back to the whole
+    cluster set, and the fall-back to upcoming words on an empty install, were
+    both tried and both put vocabulary on screen that was never chosen. With
+    nothing studied the feed shows its empty state, which is the honest answer.
 
     Every sentence is its own post, not one at random per word — 85% of words
     with sentences have two. The pool is built in passes (every word's first
@@ -196,7 +197,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        594 assertions, jsdom + fake-indexeddb
+test/test_app.js        598 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -267,7 +268,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 594 passed, then 22 passed
+cd test && npm install && npm test     # expect: 598 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

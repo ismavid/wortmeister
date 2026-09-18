@@ -126,7 +126,7 @@ const I18N = {
     'feed.listen': 'Listen',
     'feed.save': 'Save',
     'feed.emptyTitle': 'Nothing to read yet',
-    'feed.emptyBody': 'Sort a few words and the feed fills with real sentences using them.',
+    'feed.emptyBody': 'Study a few words and the feed fills with real sentences using them.',
     'st.gotIt': 'Got it',
     'in.new': 'New word',
     'in.plural': 'Plural',
@@ -295,7 +295,7 @@ const I18N = {
     'feed.listen': 'Escuchar',
     'feed.save': 'Guardar',
     'feed.emptyTitle': 'Todavía no hay nada que leer',
-    'feed.emptyBody': 'Clasifica unas palabras y el feed se llena de frases reales que las usan.',
+    'feed.emptyBody': 'Estudia unas palabras y el feed se llena de frases reales que las usan.',
     'st.gotIt': 'Entendido',
     'in.new': 'Palabra nueva',
     'in.plural': 'Plural',
@@ -2972,23 +2972,27 @@ function buildClusters() {
 
 /** The words the feed is about: what you are working on, newest effort first. */
 /**
- * The words the feed is about: the ones you are actually working on — sorted,
- * queued, in learning, in review, or stuck as a leech. Anything you retired as
- * already known is out, and so is the rest of the dictionary.
+ * The words the feed is about: the ones you have actually studied — in
+ * learning, in relearning, in review, or stuck as a leech.
  *
- * The only exception is a brand-new install with nothing sorted at all, which
- * would otherwise open on an empty screen; then, and only then, it borrows the
- * words you are about to meet.
+ * A word merely sorted into the queue is NOT in the feed. Neither is one you
+ * retired as known, nor the rest of the dictionary. Reading a sentence built
+ * around a word you have never once been asked is not reinforcement, it is
+ * just noise, so an install with nothing studied yet shows the empty state
+ * rather than borrowing words to fill the screen.
  */
+/** The only states the feed reads from: a word has to have been answered at
+    least once to be in it. Sorting a word into the queue is not enough. */
+const FEED_STATES = { learning: 1, relearning: 1, review: 1, leech: 1 };
+
 function feedWords() {
   const mine = [];
   for (const [id, st] of A.state) {
-    if (st.s === 'known') continue;
+    if (!FEED_STATES[st.s]) continue;
     const w = A.words[id];
     if (w && inScope(w)) mine.push(w);
   }
-  if (mine.length) return mine;
-  return queuedNew().slice(0, 60).concat(untriaged().slice(0, 60));
+  return mine;
 }
 
 /** Sentences and clusters already shown, so a top-up never repeats the screen.

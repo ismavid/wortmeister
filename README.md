@@ -242,12 +242,15 @@ vertical, one-post-per-screen scroller over the words you are actually
 learning — scroll-snap does the paging, so a flick behaves the way the phone
 expects.
 
-**Only your words.** Every post comes from something you have sorted, queued,
-are learning, are reviewing, or are stuck on. Nothing you retired as already
-known, and nothing from the rest of the dictionary. Synonym cards are held to
-the same rule: only clusters that touch a word you are working on. When you
-have few words there are simply few of those — at 30 words, none — which is
-the honest answer rather than padding the feed with vocabulary you never chose.
+**Only words you have actually answered.** A post can only come from a word
+that is in **learning, relearning, review, or stuck as a leech**. A word you
+merely sorted into the queue does not qualify, and neither does one you retired
+as known — a sentence built around a word you have never once been asked is
+noise, not reinforcement. Synonym cards follow the same rule: only clusters
+touching those words. When you have few, there are simply few — at 35 words,
+no synonym cards at all — which is the honest answer rather than padding the
+feed with vocabulary you never chose. With nothing studied yet, the feed says
+so instead of borrowing.
 
 **Sentence posts** put one real Tatoeba sentence on screen with the word picked
 out in its CEFR colour, the headword under it with its plural or principal
@@ -276,16 +279,19 @@ The pool is built in passes (every word's first sentence, then every word's
 second), so each word appears once before any appears twice: measured median
 gap of **94 posts** between a word's two sentences.
 
-| Words in progress | Sentence posts | Synonym cards | Total |
-|---|---|---|---|
-| 30 | 48 | 0 | **48** |
-| 60 | 94 | 1 | **95** |
-| 120 | 190 | 13 | **203** |
-| 200 | 316 | 27 | **343** |
-| 370 (a full run to the exam) | 592 | 55 | **647** |
+At five new words a day, every word introduced has been answered, so the feed
+grows a little each day:
+
+| | Words answered | Sentence posts | Synonym cards | Total |
+|---|---|---|---|---|
+| after a week | 35 | 56 | 0 | **56** |
+| after two weeks | 70 | 112 | 2 | **114** |
+| after a month | 150 | 232 | 18 | **250** |
+| after two months | 300 | 475 | 50 | **525** |
+| by the exam | 370 | 592 | 55 | **647** |
 
 All measured, all without a single repeat, and every one of them a word you
-chose to learn.
+have actually been asked.
 
 **It never schedules anything.** You can scroll it for an hour and not a single
 review record changes — reading is free, and the suite asserts it.
@@ -490,7 +496,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-594 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+598 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
