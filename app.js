@@ -2991,10 +2991,6 @@ function feedWords() {
   return queuedNew().slice(0, 60).concat(untriaged().slice(0, 60));
 }
 
-/**
- * A deck of posts. Sentence posts dominate because that is the thing worth
- * reading; a synonym card lands every few posts as a change of shape.
- */
 /** Sentences and clusters already shown, so a top-up never repeats the screen.
     Keyed by word id AND sentence index, or a word's second sentence could
     never appear. */
