@@ -133,13 +133,29 @@ changes. Phases 1, 2 and 3 are all shipped.
     `buildSession()` shuffles **within** each band, never across, or the
     priority is undone by the day-seeded shuffle.
 
-19. **The Feed is a reading surface, never a study surface.** It must not
+19. **The Feed only ever shows words the user is working on.** `feedWords()`
+    returns words with a review record that is not `known` — sorted, queued,
+    learning, in review, or a leech. Synonym cards are restricted the same way:
+    only clusters touching those words. **Do not widen either to "fill" the
+    feed** — falling back to the whole cluster set was tried and it filled the
+    screen with vocabulary never chosen. With few words there are simply few
+    synonym cards: at 30 words there are none, and that is correct. The only
+    exception is an install with nothing sorted at all, which borrows upcoming
+    words rather than opening blank.
+
+    Every sentence is its own post, not one at random per word — 85% of words
+    with sentences have two. The pool is built in passes (every word's first
+    sentence shuffled, then every word's second), so each word appears once
+    before any appears twice: measured median gap of 94 posts between the two.
+    Ceiling at 370 words: 592 sentence posts + 55 synonym cards, no repeats.
+
+20. **The Feed is a reading surface, never a study surface.** It must not
     schedule, log or grade anything — the suite asserts that building a deck
     and rendering it leaves every review record untouched. The only thing it
     writes is `A.set.saved`. Synonym clusters are built at runtime from the
     glosses, **never stored**, so there is no file to version.
 
-20. **Cluster on both languages, not just English.** `buildClusters()` groups
+21. **Cluster on both languages, not just English.** `buildClusters()` groups
     words whose first English sense matches, then keeps only members that also
     share a SPANISH sense. Without the cross-check it collects senses of the
     *English* word rather than German synonyms — "line" swept up Linie, Zeile,
@@ -147,7 +163,7 @@ changes. Phases 1, 2 and 3 are all shipped.
     ones over 1,187 words. Draw synonym cards from their own pool: only 1 word
     in 6 is clustered, so picking off the sentence cursor yields almost none.
 
-21. **Removing content above the viewport: set scrollTop absolutely.**
+22. **Removing content above the viewport: set scrollTop absolutely.**
     Chrome anchors scroll when nodes above the reader are removed; Safari does
     not. `pruneFeed()` subtracted the pruned height and landed 24 posts away
     on a 12-post prune, because Chrome's correction and ours both applied.
@@ -155,13 +171,13 @@ changes. Phases 1, 2 and 3 are all shipped.
     `CFG.FEED_MAX`; with no layout at all (headless) it trims to the cap and
     leaves scroll alone, since there is no reader to keep in place.
 
-22. **An entrance animation must never be the only thing making content
+23. **An entrance animation must never be the only thing making content
     visible.** Use `animation-fill-mode: backwards` with a visible resting
     state, never `opacity: 0` plus `forwards` — a paused compositor, a
     hidden tab or a dropped keyframe then leaves the element blank. The intro
     card was caught doing exactly this before it shipped. The suite lints it.
 
-23. **Never `var()` a custom property that `:root` does not declare.** An
+24. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -180,7 +196,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        588 assertions, jsdom + fake-indexeddb
+test/test_app.js        594 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -251,7 +267,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 588 passed, then 22 passed
+cd test && npm install && npm test     # expect: 594 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

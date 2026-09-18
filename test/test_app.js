@@ -525,6 +525,45 @@ function A_extendedSample(w){
       return cur && cur.ids.length >= 3;
     })(), (M.A.clusters.find(c => c.key === 'current') || { ids: [] }).ids.length);
 
+    // ---- it may only talk about words you are actually working on
+    {
+      const saveState = new Map(M.A.state);
+      M.A.state.clear();
+      // a realistic learner: some studied, one retired, the rest untouched
+      const pick = M.A.words.filter(x => M.inScope(x) && M.sentencesFor(x)).slice(0, 40);
+      const retired = pick[0];
+      for (const x of pick) {
+        const st = M.newState(); st.s = 'review'; st.r = 3; st.i = 4; st.d = Date.now();
+        M.A.state.set(x.id, st);
+      }
+      M.A.state.get(retired.id).s = 'known';       // retired: must not appear
+      const mine = new Set(pick.filter(x => x.id !== retired.id).map(x => x.id));
+
+      const big = M.feedDeck(300);
+      const sentIds = big.filter(p => p.kind === 'sent').map(p => p.w.id);
+      ok('every sentence post is a word you are working on',
+        sentIds.every(id => mine.has(id)),
+        sentIds.filter(id => !mine.has(id)).slice(0, 3).join(','));
+      ok('a word you retired as known never appears',
+        !sentIds.includes(retired.id), retired.lemma);
+      ok('every synonym card touches a word you are working on',
+        big.filter(p => p.kind === 'syn')
+          .every(p => p.cluster.ids.some(id => mine.has(id))));
+
+      // and the deck should run far on that alone
+      ok('the deck goes well past a screenful without repeating', (() => {
+        const pairs = big.filter(p => p.kind === 'sent').map(p => p.w.id + ':' + p.si);
+        return pairs.length > 40 && new Set(pairs).size === pairs.length;
+      })(), big.filter(p => p.kind === 'sent').length + ' sentence posts');
+
+      // an install with nothing sorted still gets a feed rather than a blank
+      M.A.state.clear();
+      ok('a brand-new install still has something to read', M.feedDeck(6).length > 0);
+
+      M.A.state.clear();
+      for (const [k, v] of saveState) M.A.state.set(k, v);
+    }
+
     // ---- the deck
     const before = JSON.stringify(Array.from(M.A.state.entries()));
     const deck = M.feedDeck(18);
@@ -582,12 +621,23 @@ function A_extendedSample(w){
     {
       const d1 = M.feedDeck(18);
       const d2 = M.feedDeck(12, false);      // false = keep the memory
-      const ids = d1.concat(d2).filter(p => p.kind === 'sent').map(p => p.w.id);
-      ok('a top-up never repeats a word already shown',
-        new Set(ids).size === ids.length, ids.length - new Set(ids).size);
+      // A word may legitimately appear twice — once per sentence — so the
+      // thing that must not repeat is the sentence, not the word.
+      const pairs = d1.concat(d2).filter(p => p.kind === 'sent')
+        .map(p => p.w.id + ':' + p.si);
+      ok('a top-up never repeats a sentence already shown',
+        new Set(pairs).size === pairs.length, pairs.length - new Set(pairs).size);
       const keys = d1.concat(d2).filter(p => p.kind === 'syn').map(p => p.cluster.key);
       ok('nor a synonym card already shown',
         new Set(keys).size === keys.length, keys.length - new Set(keys).size);
+      ok('both sentences of a word are reachable', (() => {
+        const many = M.feedDeck(400);
+        const bySeen = new Map();
+        for (const p of many.filter(x => x.kind === 'sent')) {
+          bySeen.set(p.w.id, (bySeen.get(p.w.id) || new Set()).add(p.si));
+        }
+        return [...bySeen.values()].some(set => set.size > 1);
+      })());
       ok('a fresh deck starts over', (() => {
         const d3 = M.feedDeck(18);           // defaults to fresh
         return d3.length === d1.length;

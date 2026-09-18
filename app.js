@@ -2971,6 +2971,15 @@ function buildClusters() {
 }
 
 /** The words the feed is about: what you are working on, newest effort first. */
+/**
+ * The words the feed is about: the ones you are actually working on — sorted,
+ * queued, in learning, in review, or stuck as a leech. Anything you retired as
+ * already known is out, and so is the rest of the dictionary.
+ *
+ * The only exception is a brand-new install with nothing sorted at all, which
+ * would otherwise open on an empty screen; then, and only then, it borrows the
+ * words you are about to meet.
+ */
 function feedWords() {
   const mine = [];
   for (const [id, st] of A.state) {
@@ -2978,50 +2987,70 @@ function feedWords() {
     const w = A.words[id];
     if (w && inScope(w)) mine.push(w);
   }
-  if (mine.length >= 8) return mine;
-  // nothing studied yet — show what is coming up, so the feed is never empty
-  return mine.concat(queuedNew().slice(0, 40), untriaged().slice(0, 40));
+  if (mine.length) return mine;
+  return queuedNew().slice(0, 60).concat(untriaged().slice(0, 60));
 }
 
 /**
  * A deck of posts. Sentence posts dominate because that is the thing worth
  * reading; a synonym card lands every few posts as a change of shape.
  */
-/** Words and clusters already shown, so a top-up does not repeat the screen. */
-let SEEN = { w: new Set(), c: new Set() };
+/** Sentences and clusters already shown, so a top-up never repeats the screen.
+    Keyed by word id AND sentence index, or a word's second sentence could
+    never appear. */
+let SEEN = { s: new Set(), c: new Set() };
 
+/**
+ * A deck of posts, drawn only from your own words.
+ *
+ * Every sentence counts as its own post rather than one at random per word:
+ * 85% of the words that have sentences have two of them, so enumerating the
+ * pairs roughly doubles how far the feed goes before it has to repeat. At 370
+ * words — a full run to the exam — that is about 590 sentence posts and 55
+ * synonym cards without showing you a word you have never chosen to learn.
+ *
+ * The pool is built in passes: every word's first sentence, shuffled, then
+ * every word's second. That way each word appears once before any word
+ * appears twice, instead of a shuffle putting both of them side by side.
+ */
 function feedDeck(n, fresh) {
-  if (fresh !== false) SEEN = { w: new Set(), c: new Set() };
+  if (fresh !== false) SEEN = { s: new Set(), c: new Set() };
   const words = feedWords();
   if (!words.length) return [];
-  const rnd = seededRandom((Date.now() ^ (SEEN.w.size * 2654435761)) & 0xffffff);
-  let pool = shuffleSeeded(words.filter(sentencesFor), rnd);
-  if (!pool.length) return [];
-  // Scrolling is unbounded but the vocabulary is not: once everything has been
-  // shown, start the cycle again rather than running dry. Repeating after a
-  // full pass is fine; repeating on the next screen is what looked broken.
-  if (pool.every(x => SEEN.w.has(x.id))) SEEN.w.clear();
+  const rnd = seededRandom((Date.now() ^ (SEEN.s.size * 2654435761)) & 0xffffff);
 
-  // Clusters get their own pool. Drawing them from whichever word happened to
-  // come up next produced almost none: only 1,187 of 7,035 words are in a
-  // cluster at all, so the odds of the cursor landing on one are poor. Prefer
-  // the ones touching words you are working on, then fall back to any.
+  const withSents = words.filter(sentencesFor);
+  if (!withSents.length) return [];
+  const depth = withSents.reduce((m, w) => Math.max(m, sentencesFor(w).length), 0);
+  let pool = [];
+  for (let d = 0; d < depth; d++) {
+    pool = pool.concat(shuffleSeeded(
+      withSents.filter(w => sentencesFor(w).length > d).map(w => ({ w, si: d })), rnd));
+  }
+  // Scrolling is unbounded but your vocabulary is not: once every sentence has
+  // been shown, start the cycle again rather than running dry. Repeating after
+  // a full pass is fine; repeating on the next screen is what looked broken.
+  if (pool.every(x => SEEN.s.has(x.w.id + ':' + x.si))) {
+    SEEN.s.clear();
+    SEEN.c.clear();          // one reset point: a full pass, or nothing
+  }
+
+  // Synonym cards come only from clusters that touch your own words. Falling
+  // back to the whole set filled the feed with vocabulary you had never met,
+  // which is the opposite of the point; when you have few words there are
+  // simply few of these — at 30 words, none.
   const mine = new Set(words.map(w => w.id));
-  const near = A.clusters.filter(c => c.ids.some(id => mine.has(id)));
-  const nearSet = new Set(near);
-  // Clusters touching your own words come first, but the rest follow rather
-  // than the pool ending there: with only a handful of words in progress
-  // "near" can be four groups, and a pool of four cycles every four cards.
-  const cPool = shuffleSeeded(near.slice(), rnd)
-    .concat(shuffleSeeded(A.clusters.filter(c => !nearSet.has(c)), rnd));
-
-  if (cPool.every(x => SEEN.c.has(x.key))) SEEN.c.clear();
+  // Deliberately NOT reset on its own. If you only have one cluster, showing
+  // it once and then dropping to pure sentences is right; cycling it every
+  // fourth post would be worse than not having it.
+  const cPool = shuffleSeeded(
+    A.clusters.filter(c => c.ids.some(id => mine.has(id))), rnd);
 
   const deck = [];
   let k = 0, c = 0, guard = 0;
-  while (deck.length < n && guard++ < pool.length * 4 + 40) {
-    // every fourth slot is a synonym card, as a change of shape
-    if (deck.length % 4 === 3) {
+  while (deck.length < n && guard++ < pool.length * 2 + 40) {
+    // every fourth slot is a synonym card, when there is one to show
+    if (deck.length % 4 === 3 && cPool.length) {
       while (c < cPool.length && SEEN.c.has(cPool[c].key)) c++;
       if (c < cPool.length) {
         SEEN.c.add(cPool[c].key);
@@ -3029,13 +3058,11 @@ function feedDeck(n, fresh) {
         continue;
       }
     }
-    while (k < pool.length && SEEN.w.has(pool[k].id)) k++;
+    while (k < pool.length && SEEN.s.has(pool[k].w.id + ':' + pool[k].si)) k++;
     if (k >= pool.length) break;
-    const w = pool[k++];
-    SEEN.w.add(w.id);
-    const sents = sentencesFor(w);
-    const si = Math.floor(rnd() * sents.length);
-    deck.push({ kind: 'sent', w, s: sents[si], si });
+    const { w, si } = pool[k++];
+    SEEN.s.add(w.id + ':' + si);
+    deck.push({ kind: 'sent', w, s: sentencesFor(w)[si], si });
   }
   return deck;
 }

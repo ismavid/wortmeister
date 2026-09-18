@@ -242,6 +242,13 @@ vertical, one-post-per-screen scroller over the words you are actually
 learning — scroll-snap does the paging, so a flick behaves the way the phone
 expects.
 
+**Only your words.** Every post comes from something you have sorted, queued,
+are learning, are reviewing, or are stuck on. Nothing you retired as already
+known, and nothing from the rest of the dictionary. Synonym cards are held to
+the same rule: only clusters that touch a word you are working on. When you
+have few words there are simply few of those — at 30 words, none — which is
+the honest answer rather than padding the feed with vocabulary you never chose.
+
 **Sentence posts** put one real Tatoeba sentence on screen with the word picked
 out in its CEFR colour, the headword under it with its plural or principal
 parts, and the translation plus both meanings a tap away.
@@ -260,6 +267,25 @@ Scrolling is endless, but it does not repeat itself: the deck remembers what it
 has already shown and only starts the cycle again once everything has been. The
 DOM is capped at 48 posts — older ones are dropped from the top without moving
 what you are reading.
+
+### How far it goes
+
+Every sentence is its own post, not one picked at random per word — 85% of the
+words that have sentences have **two**, so using both roughly doubles the run.
+The pool is built in passes (every word's first sentence, then every word's
+second), so each word appears once before any appears twice: measured median
+gap of **94 posts** between a word's two sentences.
+
+| Words in progress | Sentence posts | Synonym cards | Total |
+|---|---|---|---|
+| 30 | 48 | 0 | **48** |
+| 60 | 94 | 1 | **95** |
+| 120 | 190 | 13 | **203** |
+| 200 | 316 | 27 | **343** |
+| 370 (a full run to the exam) | 592 | 55 | **647** |
+
+All measured, all without a single repeat, and every one of them a word you
+chose to learn.
 
 **It never schedules anything.** You can scroll it for an hour and not a single
 review record changes — reading is free, and the suite asserts it.
@@ -464,7 +490,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-588 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+594 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
