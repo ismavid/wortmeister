@@ -30,6 +30,7 @@ const CFG = {
   REENTRY_GAPS: [2, 5, 10, 18],
   MATCH_PAIRS: 6,                        // words per pairing round
   MATCH_EVERY: 22,                       // cards between pairing rounds
+  FEED_MAX: 48,                          // posts kept in the DOM while scrolling
   SETTINGS_DEBOUNCE: 1500,
   FUZZ: 1,                               // interval jitter on; 0 disables (tests)
   FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
@@ -171,7 +172,7 @@ const I18N = {
     'br.search': 'Search German or English',
     'br.allLevels': 'All levels', 'br.allWords': 'All words',
     'br.notSorted': 'Not sorted', 'br.learning': 'Learning',
-    'br.inReview': 'In review', 'br.known': 'Known', 'br.difficult': 'Difficult',
+    'br.inReview': 'In review', 'br.known': 'Known', 'br.difficult': 'Difficult', 'br.saved': 'Saved',
     'br.tapHint': 'Tap to mark known · tap again to undo',
     'br.noMatch': 'No words match that',
     'br.backQueue': 'Back in the queue — tap again to mark it known',
@@ -346,7 +347,7 @@ const I18N = {
     'br.allLevels': 'Todos los niveles', 'br.allWords': 'Todas las palabras',
     'br.notSorted': 'Sin clasificar', 'br.learning': 'Aprendiendo',
     'br.inReview': 'En repaso', 'br.known': 'Conocidas',
-    'br.difficult': 'Difíciles',
+    'br.difficult': 'Difíciles', 'br.saved': 'Guardadas',
     'br.tapHint': 'Toca para marcar conocida · toca otra vez para deshacer',
     'br.noMatch': 'Ninguna palabra coincide',
     'br.backQueue': 'De vuelta en la cola — toca otra vez para marcarla conocida',
@@ -2986,12 +2987,20 @@ function feedWords() {
  * A deck of posts. Sentence posts dominate because that is the thing worth
  * reading; a synonym card lands every few posts as a change of shape.
  */
-function feedDeck(n) {
+/** Words and clusters already shown, so a top-up does not repeat the screen. */
+let SEEN = { w: new Set(), c: new Set() };
+
+function feedDeck(n, fresh) {
+  if (fresh !== false) SEEN = { w: new Set(), c: new Set() };
   const words = feedWords();
   if (!words.length) return [];
-  const rnd = seededRandom(Date.now() & 0xffff);
-  const pool = shuffleSeeded(words.filter(sentencesFor), rnd);
+  const rnd = seededRandom((Date.now() ^ (SEEN.w.size * 2654435761)) & 0xffffff);
+  let pool = shuffleSeeded(words.filter(sentencesFor), rnd);
   if (!pool.length) return [];
+  // Scrolling is unbounded but the vocabulary is not: once everything has been
+  // shown, start the cycle again rather than running dry. Repeating after a
+  // full pass is fine; repeating on the next screen is what looked broken.
+  if (pool.every(x => SEEN.w.has(x.id))) SEEN.w.clear();
 
   // Clusters get their own pool. Drawing them from whichever word happened to
   // come up next produced almost none: only 1,187 of 7,035 words are in a
@@ -2999,19 +3008,34 @@ function feedDeck(n) {
   // the ones touching words you are working on, then fall back to any.
   const mine = new Set(words.map(w => w.id));
   const near = A.clusters.filter(c => c.ids.some(id => mine.has(id)));
-  const cPool = shuffleSeeded((near.length ? near : A.clusters).slice(), rnd);
+  const nearSet = new Set(near);
+  // Clusters touching your own words come first, but the rest follow rather
+  // than the pool ending there: with only a handful of words in progress
+  // "near" can be four groups, and a pool of four cycles every four cards.
+  const cPool = shuffleSeeded(near.slice(), rnd)
+    .concat(shuffleSeeded(A.clusters.filter(c => !nearSet.has(c)), rnd));
+
+  if (cPool.every(x => SEEN.c.has(x.key))) SEEN.c.clear();
 
   const deck = [];
-  let k = 0, c = 0;
-  while (deck.length < n && k < pool.length * 3) {
+  let k = 0, c = 0, guard = 0;
+  while (deck.length < n && guard++ < pool.length * 4 + 40) {
     // every fourth slot is a synonym card, as a change of shape
-    if (deck.length % 4 === 3 && c < cPool.length) {
-      deck.push({ kind: 'syn', cluster: cPool[c++] });
-      continue;
+    if (deck.length % 4 === 3) {
+      while (c < cPool.length && SEEN.c.has(cPool[c].key)) c++;
+      if (c < cPool.length) {
+        SEEN.c.add(cPool[c].key);
+        deck.push({ kind: 'syn', cluster: cPool[c++] });
+        continue;
+      }
     }
-    const w = pool[k++ % pool.length];
+    while (k < pool.length && SEEN.w.has(pool[k].id)) k++;
+    if (k >= pool.length) break;
+    const w = pool[k++];
+    SEEN.w.add(w.id);
     const sents = sentencesFor(w);
-    deck.push({ kind: 'sent', w, s: sents[Math.floor(rnd() * sents.length)] });
+    const si = Math.floor(rnd() * sents.length);
+    deck.push({ kind: 'sent', w, s: sents[si], si });
   }
   return deck;
 }
@@ -3058,12 +3082,13 @@ function postHTML(p) {
     '<div class="preveal"><em>' + esc(en) + '</em><br>' +
       esc(w.en) + (es ? ' · ' + esc(es) : '') + '</div>' +
     '<div class="phint">' + T('feed.tap') + '</div>' +
-    rail(w, saved) + '</article>';
+    rail(w, saved, p.si) + '</article>';
 }
-function rail(w, saved) {
+function rail(w, saved, si) {
   const on = saved.includes(w.id) ? ' on' : '';
   return '<div class="prail">' +
-    '<button class="fbtn" data-say="' + w.id + '" aria-label="' + T('feed.listen') + '">♪</button>' +
+    '<button class="fbtn" data-say="' + w.id + '" data-si="' + (si == null ? -1 : si) +
+      '" aria-label="' + T('feed.listen') + '">♪</button>' +
     '<button class="fbtn' + on + '" data-save="' + w.id + '" aria-label="' + T('feed.save') + '">♥</button>' +
     '</div>';
 }
@@ -3073,20 +3098,49 @@ function renderFeed(more) {
   const el = $('#feed');
   if (!el) return;
   if (!more) { FEED = feedDeck(18); el.innerHTML = ''; el.scrollTop = 0; }
-  else FEED = feedDeck(12);
+  else FEED = feedDeck(12, false);      // keep the memory, or it repeats
   if (!FEED.length && !more) {
     el.innerHTML = '<div class="fempty"><b>' + T('feed.emptyTitle') + '</b><span>' +
       T('feed.emptyBody') + '</span></div>';
     return;
   }
   el.insertAdjacentHTML('beforeend', FEED.map(postHTML).join(''));
+  pruneFeed(el);
+}
+
+/**
+ * Scrolling is endless; the DOM is not allowed to be. Posts are all exactly
+ * one viewport tall, so dropping k from the front and subtracting k viewports
+ * from scrollTop leaves the reader exactly where they were.
+ */
+function pruneFeed(el) {
+  const posts = el.children;
+  const over = posts.length - CFG.FEED_MAX;
+  if (over <= 0) return;
+  const h = el.clientHeight;
+  // Without layout there is no reader to keep in place, so simply hold the
+  // cap. This is the headless case; a real viewport always has a height.
+  if (!h) {
+    for (let i = 0; i < over; i++) posts[0].remove();
+    return;
+  }
+  // never prune anything still on or near the screen
+  const safe = Math.min(over, Math.max(0, Math.floor(el.scrollTop / h) - 2));
+  if (safe <= 0) return;
+  // Set the target absolutely rather than subtracting. Chrome anchors scroll
+  // when content above the viewport is removed and Safari does not, so a
+  // relative adjustment lands in a different place on each — measured as a
+  // 24-post jump on a 12-post prune, because both corrections applied.
+  const target = Math.max(0, el.scrollTop - safe * h);
+  for (let i = 0; i < safe; i++) posts[0].remove();
+  el.scrollTop = target;
 }
 
 $('#feed').addEventListener('click', e => {
   const say = e.target.closest('[data-say]');
   if (say) {
     const w = A.words[+say.dataset.say];
-    if (w) say_(w);
+    if (w) say_(w, +say.dataset.si);
     return;
   }
   const sv = e.target.closest('[data-save]');
@@ -3109,8 +3163,11 @@ $('#feed').addEventListener('scroll', () => {
 }, { passive: true });
 
 /** Speak a word the way the study card would. */
-function say_(w) {
+/** Read what is on the card. The post picks a sentence at random, so playing
+    sentencesFor(w)[0] could read one the reader is not looking at. */
+function say_(w, si) {
   const sents = sentencesFor(w);
+  if (sents && si >= 0 && sents[si]) return say(sents[si][0], 'de-DE');
   say(sents ? sents[0][0] : w.lemma, 'de-DE');
 }
 
@@ -3129,6 +3186,7 @@ function renderBrowse() {
       if (stf === 'review' && s !== 'review') continue;
       if (stf === 'known' && s !== 'known') continue;
       if (stf === 'leech' && s !== 'leech') continue;
+      if (stf === 'saved' && !feedSaved().includes(w.id)) continue;
     }
     if (q && !w.lemma.toLowerCase().includes(q) && !w.en.toLowerCase().includes(q)
       && !gloss(w).toLowerCase().includes(q)) continue;
@@ -3440,6 +3498,7 @@ window.__wm = {
   markIntroduced, isIntroduced, clearIntroduced,
   reviewBudget, isFragile, migrateReviewCap,
   buildClusters, feedDeck, feedWords, postHTML, renderFeed, senseKey, esSenses, NAV,
+  feedSaved, pruneFeed, say_, renderBrowse,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

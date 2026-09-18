@@ -254,7 +254,12 @@ Colours come from the level: A1 green, A2 cyan, B1 orange, B2 purple, washed
 behind the text rather than drawn around it.
 
 Tap a post for the meaning, ♪ to hear it, ♥ to keep it. The heart is the only
-thing the Feed writes.
+thing the Feed writes, and what you keep shows up under **Words → Saved**.
+
+Scrolling is endless, but it does not repeat itself: the deck remembers what it
+has already shown and only starts the cycle again once everything has been. The
+DOM is capped at 48 posts — older ones are dropped from the top without moving
+what you are reading.
 
 **It never schedules anything.** You can scroll it for an hour and not a single
 review record changes — reading is free, and the suite asserts it.
@@ -459,7 +464,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-578 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+588 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
@@ -501,8 +506,8 @@ real though: it needs an API key, which cannot be kept secret in a static app;
 it only works online, breaking the offline guarantee; and results would have to
 be cached rather than fetched per scroll.
 
-If it is wanted, the honest shape is an **optional, online-only, off-by-default
-section** using your own YouTube key — not something woven into the Feed.
+Decided against on 18 Sep 2026: the Feed stays organic, built only on the
+sentences and glosses that ship with the app and work offline.
 
 
 All three planned phases are shipped. Still open: a `vocab.v2.json` rebuild to

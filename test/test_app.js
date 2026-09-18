@@ -575,6 +575,66 @@ function A_extendedSample(w){
     ok('the feed renders posts into the view', posts.length > 0, posts.length);
     ok('rendering the feed throws nothing', errors.length === errCount,
       errors.slice(errCount, errCount + 2).join(' | '));
+
+    // ---- a top-up must not repeat the screen
+    // Before the deck remembered anything this produced 17 duplicate words in
+    // 42 posts, because each top-up reshuffled the same pool from scratch.
+    {
+      const d1 = M.feedDeck(18);
+      const d2 = M.feedDeck(12, false);      // false = keep the memory
+      const ids = d1.concat(d2).filter(p => p.kind === 'sent').map(p => p.w.id);
+      ok('a top-up never repeats a word already shown',
+        new Set(ids).size === ids.length, ids.length - new Set(ids).size);
+      const keys = d1.concat(d2).filter(p => p.kind === 'syn').map(p => p.cluster.key);
+      ok('nor a synonym card already shown',
+        new Set(keys).size === keys.length, keys.length - new Set(keys).size);
+      ok('a fresh deck starts over', (() => {
+        const d3 = M.feedDeck(18);           // defaults to fresh
+        return d3.length === d1.length;
+      })());
+    }
+
+    // ---- the speaker reads what is on the card
+    {
+      const p = M.feedDeck(18).find(x => x.kind === 'sent');
+      ok('a sentence post records which sentence it chose',
+        typeof p.si === 'number' && p.si >= 0, p && p.si);
+      const h = M.postHTML(p);
+      ok('and the listen button carries it', h.includes('data-si="' + p.si + '"'),
+        (h.match(/data-si="[^"]*"/) || [])[0]);
+      // the rendered sentence carries <em> around the target, so compare the
+      // text with the markup stripped rather than a raw substring
+      const rendered = (h.match(/<div class="psent">(.*?)<\/div>/) || ['', ''])[1]
+        .replace(/<\/?em>/g, '');
+      ok('the recorded sentence is the one rendered', rendered === M.esc(p.s[0]),
+        rendered.slice(0, 40) + ' vs ' + p.s[0].slice(0, 40));
+    }
+
+    // ---- the DOM cannot grow without bound
+    {
+      const feed = w.document.getElementById('feed');
+      for (let i = 0; i < 10; i++) M.renderFeed(true);
+      ok('scrolling forever does not grow the DOM forever',
+        feed.children.length <= M.CFG.FEED_MAX, feed.children.length);
+      ok('the cap is a real number', M.CFG.FEED_MAX > 20, M.CFG.FEED_MAX);
+    }
+
+    // ---- saved words are reachable from Words
+    {
+      const opts = [...w.document.querySelectorAll('#br-state option')].map(o => o.value);
+      ok('Words can filter to saved posts', opts.includes('saved'), opts.join(','));
+      const id = M.A.words.find(x => M.inScope(x)).id;
+      M.A.set.saved = [id];
+      w.document.getElementById('br-state').value = 'saved';
+      w.document.getElementById('br-q').value = '';
+      M.renderBrowse();
+      const rows = [...w.document.querySelectorAll('#br-list .wrow')].map(r => +r.dataset.id);
+      ok('and the saved word is the one listed',
+        rows.length === 1 && rows[0] === id, rows.slice(0, 4).join(','));
+      M.A.set.saved = [];
+      w.document.getElementById('br-state').value = '';
+      M.renderBrowse();
+    }
   }
 
   // ------------------------------------------------- daily review budget
