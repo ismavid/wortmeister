@@ -133,13 +133,27 @@ changes. Phases 1, 2 and 3 are all shipped.
     `buildSession()` shuffles **within** each band, never across, or the
     priority is undone by the day-seeded shuffle.
 
-19. **An entrance animation must never be the only thing making content
+19. **The Feed is a reading surface, never a study surface.** It must not
+    schedule, log or grade anything — the suite asserts that building a deck
+    and rendering it leaves every review record untouched. The only thing it
+    writes is `A.set.saved`. Synonym clusters are built at runtime from the
+    glosses, **never stored**, so there is no file to version.
+
+20. **Cluster on both languages, not just English.** `buildClusters()` groups
+    words whose first English sense matches, then keeps only members that also
+    share a SPANISH sense. Without the cross-check it collects senses of the
+    *English* word rather than German synonyms — "line" swept up Linie, Zeile,
+    Vers, Trasse and Flucht. The cross-check takes 763 raw groups to 532 clean
+    ones over 1,187 words. Draw synonym cards from their own pool: only 1 word
+    in 6 is clustered, so picking off the sentence cursor yields almost none.
+
+21. **An entrance animation must never be the only thing making content
     visible.** Use `animation-fill-mode: backwards` with a visible resting
     state, never `opacity: 0` plus `forwards` — a paused compositor, a
     hidden tab or a dropped keyframe then leaves the element blank. The intro
     card was caught doing exactly this before it shipped. The suite lints it.
 
-20. **Never `var()` a custom property that `:root` does not declare.** An
+22. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -158,7 +172,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        553 assertions, jsdom + fake-indexeddb
+test/test_app.js        578 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -166,7 +180,7 @@ tools/vocab-build/      Python pipeline that produced the data (optional)
 
 `app.js` sections, in order: config · DOM helpers · IndexedDB · app state ·
 vocabulary · scheduler · typed-answer checking · queues · history · router ·
-home · triage · study · browse · stats · settings · boot.
+home · triage · study · feed · browse · stats · settings · boot.
 
 ---
 
@@ -229,7 +243,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 553 passed, then 22 passed
+cd test && npm install && npm test     # expect: 578 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

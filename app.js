@@ -42,7 +42,8 @@ const CFG = {
   defaults: {
     exam: '2026-11-11', newPerDay: 5, maxReviews: 60,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
-    streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en'
+    streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en',
+    saved: []
   }
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
@@ -78,7 +79,7 @@ const I18N = {
     'err.title': 'Could not load the app',
     'err.load': 'Check your connection and reload',
 
-    'nav.home': 'Home', 'nav.browse': 'Words',
+    'nav.home': 'Home', 'nav.feed': 'Feed', 'nav.browse': 'Words',
     'nav.stats': 'Stats', 'nav.settings': 'Settings',
 
     'home.notStarted': 'not started yet',
@@ -118,6 +119,13 @@ const I18N = {
     'tg.undo': 'Undo last', 'tg.technical': 'Technical',
 
     'st.title': 'Study',
+    'feed.tap': 'Tap for the meaning',
+    'feed.samemeaning': 'Same meaning',
+    'feed.theyallmean': 'They all mean',
+    'feed.listen': 'Listen',
+    'feed.save': 'Save',
+    'feed.emptyTitle': 'Nothing to read yet',
+    'feed.emptyBody': 'Sort a few words and the feed fills with real sentences using them.',
     'st.gotIt': 'Got it',
     'in.new': 'New word',
     'in.plural': 'Plural',
@@ -240,7 +248,7 @@ const I18N = {
     'err.title': 'No se pudo cargar la app',
     'err.load': 'Revisa tu conexión y recarga',
 
-    'nav.home': 'Inicio', 'nav.browse': 'Palabras',
+    'nav.home': 'Inicio', 'nav.feed': 'Feed', 'nav.browse': 'Palabras',
     'nav.stats': 'Progreso', 'nav.settings': 'Ajustes',
 
     'home.notStarted': 'aún sin empezar',
@@ -280,6 +288,13 @@ const I18N = {
     'tg.undo': 'Deshacer', 'tg.technical': 'Técnica',
 
     'st.title': 'Estudiar',
+    'feed.tap': 'Toca para ver el significado',
+    'feed.samemeaning': 'Mismo significado',
+    'feed.theyallmean': 'Todas significan',
+    'feed.listen': 'Escuchar',
+    'feed.save': 'Guardar',
+    'feed.emptyTitle': 'Todavía no hay nada que leer',
+    'feed.emptyBody': 'Clasifica unas palabras y el feed se llena de frases reales que las usan.',
     'st.gotIt': 'Entendido',
     'in.new': 'Palabra nueva',
     'in.plural': 'Plural',
@@ -591,6 +606,8 @@ const A = {
   byPos: new Map(),   // pos -> [word], for cloze distractors
   sentences: {},      // word id -> [[german, blankAt, blankLen, english]]
   glosses: {},        // word id -> Spanish gloss, when the Spanish bank is loaded
+  clusters: [],       // near-synonym groups, built at load
+  clusterOf: new Map(),
   state: new Map(),   // id -> review record (only touched words)
   set: null,          // settings
   dirty: new Set(),
@@ -816,6 +833,7 @@ async function loadGlosses() {
     const map = {};
     if (cached) for (let n = 0; n < cached.ids.length; n++) map[cached.ids[n]] = cached.es[n];
     A.glosses = map;
+    buildClusters();
   })();
   return A.glossesLoading;
 }
@@ -1627,7 +1645,7 @@ function recentPace(days) {
 /* No Study tab: Home's primary button is the way in, and a second route to it
    only made the two compete. */
 const NAV = [
-  ['home', '◎'], ['browse', '☰'], ['stats', '◔'], ['settings', '⚙']
+  ['home', '◎'], ['feed', '✦'], ['browse', '☰'], ['stats', '◔'], ['settings', '⚙']
 ];
 let current = 'home';
 function go(name) {
@@ -1636,6 +1654,7 @@ function go(name) {
   $$('.nav').forEach(n => $$('button', n).forEach(b =>
     b.classList.toggle('on', b.dataset.go === name)));
   if (name === 'home') renderHome();
+  if (name === 'feed') renderFeed();
   if (name === 'browse') renderBrowse();
   if (name === 'stats') renderStats();
   if (name === 'settings') renderSettings();
@@ -2899,6 +2918,202 @@ $('#st-continue').addEventListener('click', () => {
   showCard();
 });
 
+
+/* ============================ feed ============================
+   A vertical feed of the words you are actually working on: one real sentence
+   per screen, and cards that put near-synonyms side by side. It is read-only
+   with respect to scheduling — scrolling it forever changes no review record.
+   The only thing it writes is which posts you saved. */
+
+/** Normalise one gloss to its first sense, for matching across words. */
+function senseKey(gloss) {
+  return (gloss || '').split(/[,;(]/)[0].trim().toLowerCase()
+    .replace(/^to\s+/, '').replace(/^(a|an|the|el|la|los|las|un|una)\s+/, '')
+    .replace(/[^a-záéíóúüñ\s-]/g, '').trim();
+}
+/** Every Spanish sense a word carries, so "empresa; operación" matches either. */
+function esSenses(id) {
+  return (A.glosses[id] || '').split(/[,;]/).map(senseKey).filter(x => x.length > 2);
+}
+
+/**
+ * Words that mean the same thing, grouped.
+ *
+ * Grouping on the English gloss alone is not enough: it collects senses of the
+ * *English* word rather than German synonyms, so "line" swept up Linie, Zeile,
+ * Vers, Trasse and Flucht. Requiring the members to share a SPANISH sense as
+ * well splits those apart — two words that really are synonyms agree in both
+ * languages. That cross-check takes 763 raw groups down to 532 clean ones.
+ */
+function buildClusters() {
+  const byEn = new Map();
+  for (const w of A.words) {
+    if (!inScope(w)) continue;
+    const k = senseKey(w.en);
+    if (k.length < 3) continue;
+    if (!byEn.has(k)) byEn.set(k, []);
+    byEn.get(k).push(w);
+  }
+  const out = [];
+  for (const [k, group] of byEn) {
+    if (group.length < 2) continue;
+    if (new Set(group.map(w => w.pos)).size !== 1) continue;   // same part of speech
+    const senses = new Map(group.map(w => [w.id, new Set(esSenses(w.id))]));
+    const agree = group.filter(a => group.some(b =>
+      b.id !== a.id && [...senses.get(a.id)].some(x => senses.get(b.id).has(x))));
+    if (agree.length < 2) continue;
+    out.push({ key: k, pos: agree[0].pos, ids: agree.map(w => w.id) });
+  }
+  A.clusters = out;
+  A.clusterOf = new Map();
+  for (const c of out) for (const id of c.ids) A.clusterOf.set(id, c);
+}
+
+/** The words the feed is about: what you are working on, newest effort first. */
+function feedWords() {
+  const mine = [];
+  for (const [id, st] of A.state) {
+    if (st.s === 'known') continue;
+    const w = A.words[id];
+    if (w && inScope(w)) mine.push(w);
+  }
+  if (mine.length >= 8) return mine;
+  // nothing studied yet — show what is coming up, so the feed is never empty
+  return mine.concat(queuedNew().slice(0, 40), untriaged().slice(0, 40));
+}
+
+/**
+ * A deck of posts. Sentence posts dominate because that is the thing worth
+ * reading; a synonym card lands every few posts as a change of shape.
+ */
+function feedDeck(n) {
+  const words = feedWords();
+  if (!words.length) return [];
+  const rnd = seededRandom(Date.now() & 0xffff);
+  const pool = shuffleSeeded(words.filter(sentencesFor), rnd);
+  if (!pool.length) return [];
+
+  // Clusters get their own pool. Drawing them from whichever word happened to
+  // come up next produced almost none: only 1,187 of 7,035 words are in a
+  // cluster at all, so the odds of the cursor landing on one are poor. Prefer
+  // the ones touching words you are working on, then fall back to any.
+  const mine = new Set(words.map(w => w.id));
+  const near = A.clusters.filter(c => c.ids.some(id => mine.has(id)));
+  const cPool = shuffleSeeded((near.length ? near : A.clusters).slice(), rnd);
+
+  const deck = [];
+  let k = 0, c = 0;
+  while (deck.length < n && k < pool.length * 3) {
+    // every fourth slot is a synonym card, as a change of shape
+    if (deck.length % 4 === 3 && c < cPool.length) {
+      deck.push({ kind: 'syn', cluster: cPool[c++] });
+      continue;
+    }
+    const w = pool[k++ % pool.length];
+    const sents = sentencesFor(w);
+    deck.push({ kind: 'sent', w, s: sents[Math.floor(rnd() * sents.length)] });
+  }
+  return deck;
+}
+
+function feedSaved() {
+  if (!Array.isArray(A.set.saved)) A.set.saved = [];
+  return A.set.saved;
+}
+
+/** One post. The lv-* class carries the level colour; the rest is plain. */
+function postHTML(p) {
+  const saved = feedSaved();
+  if (p.kind === 'syn') {
+    const ws = p.cluster.ids.map(id => A.words[id]).filter(Boolean);
+    const lv = ws[0].level.replace('*', '');
+    const es = A.glosses[ws[0].id];
+    const rows = ws.map(x => {
+      const l = x.level.replace('*', '');
+      return '<div><b>' + (x.pos === 'noun' && x.article
+        ? '<i>' + esc(x.article) + '</i>' : '') + esc(x.lemma) +
+        '</b><span class="p-' + l + '">' + l + '</span></div>';
+    }).join('');
+    return '<article class="post lv-' + lv + '" data-id="' + ws[0].id + '">' +
+      '<div class="ptag"><b>' + T('feed.samemeaning') + '</b><span>' +
+        esc(posLabel(p.cluster.pos)) + ' · ' + ws.length + '</span></div>' +
+      '<div class="pmean">' + T('feed.theyallmean') + '</div>' +
+      '<div class="phead">' + esc(p.cluster.key) + '</div>' +
+      '<div class="psyn">' + rows + '</div>' +
+      '<div class="preveal">' + (es ? '<em>ES</em> ' + esc(es) : '') + '</div>' +
+      '<div class="phint">' + T('feed.tap') + '</div>' +
+      rail(ws[0], saved) + '</article>';
+  }
+  const w = p.w, lv = w.level.replace('*', '');
+  const [de, at, len, en] = p.s;
+  const marked = esc(de.slice(0, at)) + '<em>' + esc(de.slice(at, at + len)) +
+    '</em>' + esc(de.slice(at + len));
+  const es = A.glosses[w.id];
+  const forms = introForms(w);
+  return '<article class="post lv-' + lv + '" data-id="' + w.id + '">' +
+    '<div class="ptag"><b>' + lv + '</b><span>' + esc(posLabel(w.pos)) + '</span></div>' +
+    '<div class="psent">' + marked + '</div>' +
+    '<div class="pword">' + displayHead(w) + '</div>' +
+    (forms ? '<div class="pgram">' + forms + '</div>' : '') +
+    '<div class="preveal"><em>' + esc(en) + '</em><br>' +
+      esc(w.en) + (es ? ' · ' + esc(es) : '') + '</div>' +
+    '<div class="phint">' + T('feed.tap') + '</div>' +
+    rail(w, saved) + '</article>';
+}
+function rail(w, saved) {
+  const on = saved.includes(w.id) ? ' on' : '';
+  return '<div class="prail">' +
+    '<button class="fbtn" data-say="' + w.id + '" aria-label="' + T('feed.listen') + '">♪</button>' +
+    '<button class="fbtn' + on + '" data-save="' + w.id + '" aria-label="' + T('feed.save') + '">♥</button>' +
+    '</div>';
+}
+
+let FEED = [];
+function renderFeed(more) {
+  const el = $('#feed');
+  if (!el) return;
+  if (!more) { FEED = feedDeck(18); el.innerHTML = ''; el.scrollTop = 0; }
+  else FEED = feedDeck(12);
+  if (!FEED.length && !more) {
+    el.innerHTML = '<div class="fempty"><b>' + T('feed.emptyTitle') + '</b><span>' +
+      T('feed.emptyBody') + '</span></div>';
+    return;
+  }
+  el.insertAdjacentHTML('beforeend', FEED.map(postHTML).join(''));
+}
+
+$('#feed').addEventListener('click', e => {
+  const say = e.target.closest('[data-say]');
+  if (say) {
+    const w = A.words[+say.dataset.say];
+    if (w) say_(w);
+    return;
+  }
+  const sv = e.target.closest('[data-save]');
+  if (sv) {
+    const id = +sv.dataset.save, list = feedSaved();
+    const at = list.indexOf(id);
+    if (at >= 0) list.splice(at, 1); else list.push(id);
+    sv.classList.toggle('on', at < 0);
+    sv.classList.remove('pop'); void sv.offsetWidth; sv.classList.add('pop');
+    saveSettings();
+    return;
+  }
+  const post = e.target.closest('.post');
+  if (post) post.classList.toggle('open');
+});
+/* keep the feed going: top up once you are near the end */
+$('#feed').addEventListener('scroll', () => {
+  const el = $('#feed');
+  if (el.scrollTop + el.clientHeight * 3 >= el.scrollHeight) renderFeed(true);
+}, { passive: true });
+
+/** Speak a word the way the study card would. */
+function say_(w) {
+  const sents = sentencesFor(w);
+  say(sents ? sents[0][0] : w.lemma, 'de-DE');
+}
+
 /* ============================ browse ============================ */
 function renderBrowse() {
   const q = $('#br-q').value.trim().toLowerCase();
@@ -3224,6 +3439,7 @@ window.__wm = {
   introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
   markIntroduced, isIntroduced, clearIntroduced,
   reviewBudget, isFragile, migrateReviewCap,
+  buildClusters, feedDeck, feedWords, postHTML, renderFeed, senseKey, esSenses, NAV,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

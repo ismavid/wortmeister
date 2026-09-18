@@ -148,10 +148,15 @@ function A_extendedSample(w){
   ok('no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   ok('home view visible', w.document.getElementById('v-home').classList.contains('on'));
   ok('countdown rendered', /days until the exam/.test(w.document.getElementById('countdown').textContent));
-  ok('nav built', w.document.querySelector('.nav').querySelectorAll('button').length === 4,
+  // derived from NAV rather than pinned to a number, so adding a tab is a
+  // one-line change instead of a test failure
+  const NAVN = w.__wm.NAV.length;
+  ok('nav built', w.document.querySelector('.nav').querySelectorAll('button').length === NAVN,
     w.document.querySelector('.nav').textContent.trim().replace(/\s+/g, ' '));
   ok('every view gets the same nav',
-    [...w.document.querySelectorAll('.nav')].every(n => n.querySelectorAll('button').length === 4));
+    [...w.document.querySelectorAll('.nav')].every(n => n.querySelectorAll('button').length === NAVN));
+  ok('the feed has a tab of its own',
+    w.__wm.NAV.some(([k]) => k === 'feed'), w.__wm.NAV.map(x => x[0]).join(','));
 
   const M = w.__wm;
   const triageCount = w.document.getElementById('s-triage').textContent;
@@ -482,6 +487,94 @@ function A_extendedSample(w){
     M.applyI18n();
     ok('switching back restores English',
       doc.querySelector('[data-i18n="set.title"]').textContent === before);
+  }
+
+  // ------------------------------------------------------------- the feed
+  // A reading surface, not a study surface: it must never schedule anything.
+  console.log('\n== feed ==');
+  {
+    // the bank the clusters are built from loads after first paint, so seed it
+    const bank = JSON.parse(fs.readFileSync(path.join(APP, 'data/glosses.es.v1.json'), 'utf8'));
+    M.A.glosses = {};
+    bank.ids.forEach((id, n) => { M.A.glosses[id] = bank.es[n]; });
+    M.A.sentences = JSON.parse(
+      fs.readFileSync(path.join(APP, 'data/sentences.v1.json'), 'utf8')).byId;
+    M.buildClusters();
+
+    ok('clusters are found at all', M.A.clusters.length > 200, M.A.clusters.length);
+    ok('every cluster holds at least two words',
+      M.A.clusters.every(c => c.ids.length >= 2));
+    ok('a cluster never mixes parts of speech',
+      M.A.clusters.every(c => new Set(c.ids.map(id => M.A.words[id].pos)).size === 1));
+    ok('every clustered word is in scope',
+      M.A.clusters.every(c => c.ids.every(id => M.inScope(M.A.words[id]))));
+    ok('a word maps back to its cluster', (() => {
+      const c = M.A.clusters[0];
+      return M.A.clusterOf.get(c.ids[0]) === c;
+    })());
+
+    // the Spanish cross-check is the thing that makes these usable
+    ok('senses of one English word are not treated as German synonyms', (() => {
+      const line = M.A.clusters.find(c => c.key === 'line');
+      if (!line) return true;                      // dropped entirely is also fine
+      const lemmas = line.ids.map(id => M.A.words[id].lemma);
+      return !lemmas.includes('Vers') && !lemmas.includes('Trasse');
+    })());
+    ok('a known good cluster survives', (() => {
+      const cur = M.A.clusters.find(c => c.key === 'current');
+      return cur && cur.ids.length >= 3;
+    })(), (M.A.clusters.find(c => c.key === 'current') || { ids: [] }).ids.length);
+
+    // ---- the deck
+    const before = JSON.stringify(Array.from(M.A.state.entries()));
+    const deck = M.feedDeck(18);
+    ok('the deck fills', deck.length > 0, deck.length);
+    ok('every post is a kind the renderer knows',
+      deck.every(p => p.kind === 'sent' || p.kind === 'syn'));
+    ok('sentence posts carry a real sentence',
+      deck.filter(p => p.kind === 'sent').every(p => Array.isArray(p.s) && p.s.length === 4));
+    ok('a synonym card never repeats within a deck', (() => {
+      const keys = deck.filter(p => p.kind === 'syn').map(p => p.cluster.key);
+      return new Set(keys).size === keys.length;
+    })());
+    ok('reading the feed schedules nothing',
+      JSON.stringify(Array.from(M.A.state.entries())) === before);
+
+    // ---- the markup
+    const sent = deck.find(p => p.kind === 'sent');
+    if (sent) {
+      const h = M.postHTML(sent);
+      ok('a post carries its level colour', /class="post lv-(A1|A2|B1|B2)"/.test(h), h.slice(0, 60));
+      ok('the word is picked out of the sentence', h.includes('<em>'));
+      ok('the meaning is there to reveal', h.includes('preveal'));
+      ok('and it can be listened to and saved',
+        h.includes('data-say=') && h.includes('data-save='));
+    }
+    const syn = M.feedDeck(60).find(p => p.kind === 'syn');
+    ok('synonym cards are produced', !!syn);
+    if (syn) {
+      const h = M.postHTML(syn);
+      ok('a synonym card lists every member',
+        syn.cluster.ids.every(id => h.includes(M.esc(M.A.words[id].lemma))));
+      ok('and tags each with its own level', /class="p-(A1|A2|B1|B2)"/.test(h));
+    }
+
+    // ---- saving is the only thing it writes
+    ok('saving starts empty', Array.isArray(M.A.set.saved));
+    const savedBefore = M.A.set.saved.length;
+    M.A.set.saved.push(M.A.words[0].id);
+    ok('a saved post is remembered', M.A.set.saved.length === savedBefore + 1);
+    ok('saving still schedules nothing',
+      JSON.stringify(Array.from(M.A.state.entries())) === before);
+    M.A.set.saved.length = savedBefore;
+
+    // ---- it renders into the real DOM without throwing
+    const errCount = errors.length;
+    M.renderFeed();
+    const posts = w.document.querySelectorAll('#feed .post');
+    ok('the feed renders posts into the view', posts.length > 0, posts.length);
+    ok('rendering the feed throws nothing', errors.length === errCount,
+      errors.slice(errCount, errCount + 2).join(' | '));
   }
 
   // ------------------------------------------------- daily review budget

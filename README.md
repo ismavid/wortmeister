@@ -235,6 +235,49 @@ already at the size the *width* allows.
 
 ---
 
+## The Feed
+
+A fifth tab, and the only screen in the app with no work in it. It is a
+vertical, one-post-per-screen scroller over the words you are actually
+learning — scroll-snap does the paging, so a flick behaves the way the phone
+expects.
+
+**Sentence posts** put one real Tatoeba sentence on screen with the word picked
+out in its CEFR colour, the headword under it with its plural or principal
+parts, and the translation plus both meanings a tap away.
+
+**Synonym posts** land every fourth card and put near-synonyms side by side —
+*wieder · nochmals*, *aktuell · laufend · gegenwärtig · derzeitig · momentan* —
+each tagged with its own level, so you see which register you are reaching for.
+
+Colours come from the level: A1 green, A2 cyan, B1 orange, B2 purple, washed
+behind the text rather than drawn around it.
+
+Tap a post for the meaning, ♪ to hear it, ♥ to keep it. The heart is the only
+thing the Feed writes.
+
+**It never schedules anything.** You can scroll it for an hour and not a single
+review record changes — reading is free, and the suite asserts it.
+
+### Finding the synonyms
+
+Grouping words by their English gloss is not enough: it collects senses of the
+*English* word rather than German synonyms, so "line" swept up **Linie, Zeile,
+Vers, Trasse** and **Flucht**. Requiring members to share a *Spanish* sense as
+well splits those apart — two words that really are synonyms agree in both
+languages. That cross-check takes **763 raw groups down to 532 clean ones**
+covering 1,187 words, and leaves "line" as just *Linie · Zeile*.
+
+The clusters are computed at load from the glosses already shipped. No new
+data file, nothing to version, nothing to keep in sync.
+
+### What about TikTok and Instagram videos
+
+Not possible through anything sanctioned, and the blocker is **discovery**, not
+playback. See *Not in this build* below.
+
+---
+
 ## A day has a fixed size
 
 **Settings → Maximum reviews per day** is now what it always claimed to be.
@@ -416,7 +459,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-553 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+578 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection
@@ -428,6 +471,39 @@ against is only observable at a non-zero UTC offset.
 ---
 
 ## Not in this build
+
+### Pulling TikTok or Instagram videos into the Feed
+
+Looked at properly; it does not work, and the reason is worth writing down.
+
+**Discovery is the wall, not embedding.** Embedding a video you already know
+the URL of is easy. Finding videos in which somebody happens to say
+*Bewerbung* in an ordinary vlog is the part no API offers:
+
+- **TikTok** — the Research API can query by keyword, but it is restricted to
+  approved academic and non-profit researchers in the US and EU, requires an
+  application, and does not permit redistributing content in a product. The
+  Display API only reaches the authenticated user's own videos.
+- **Instagram** — the Graph API returns your own or your business account's
+  media. There is no public search by caption. Hashtag Search exists for
+  business accounts, is capped at 30 hashtags per 7 days, needs App Review,
+  and searches *hashtags*, not words spoken in a video.
+- **Spoken German is not indexed.** Even with search access, neither platform
+  exposes a transcript you could match a lemma against.
+- **Scraping** violates both platforms' terms, and would break the two
+  constraints this app is built on: no CDN dependency, and full offline use.
+
+**The one workable route is YouTube.** The Data API has real keyword search, a
+free quota of 10,000 units a day (a search costs 100, so ~100 searches), and
+filters for `relevanceLanguage=de`, `videoCaption=closedCaption` and
+`videoEmbeddable=true`. Shorts are vertical and embed cleanly. The costs are
+real though: it needs an API key, which cannot be kept secret in a static app;
+it only works online, breaking the offline guarantee; and results would have to
+be cached rather than fetched per scroll.
+
+If it is wanted, the honest shape is an **optional, online-only, off-by-default
+section** using your own YouTube key — not something woven into the Feed.
+
 
 All three planned phases are shipped. Still open: a `vocab.v2.json` rebuild to
 fix the auxiliaries, an adjective-declension drill, and pulling the 3,354

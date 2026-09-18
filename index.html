@@ -267,6 +267,89 @@ body.kb .typein.sm{min-height:44px}
 .pad.enter{animation:cardin .3s cubic-bezier(.32,.72,0,1) .04s backwards}
 .word{font-size:clamp(32px,9vw,48px);font-weight:700;letter-spacing:-.045em;line-height:1.06}
 
+/* ---------- the feed ----------
+   A vertical, one-screen-per-post scroller. Scroll-snap does the paging, so
+   there is no JS driving the scroll position and a flick behaves like the
+   platform expects. Posts carry a colour from the word's CEFR level, which is
+   the only chrome that changes — everything else stays still so the German is
+   what you look at. */
+.feed{flex:1;min-height:0;overflow-y:auto;scroll-snap-type:y mandatory;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.feed::-webkit-scrollbar{display:none}
+.post{position:relative;scroll-snap-align:start;scroll-snap-stop:always;
+  height:100%;display:flex;flex-direction:column;justify-content:center;
+  padding:22px 22px 104px;box-sizing:border-box;overflow:hidden;cursor:pointer;
+  user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+/* the level colour, as a wash behind the text rather than a border on it */
+.post::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 70% at 50% 0%,var(--lv) 0%,transparent 62%);
+  opacity:.17}
+.post{--lv:var(--blue)}
+.post.lv-A1{--lv:var(--a1)} .post.lv-A2{--lv:var(--a2)}
+.post.lv-B1{--lv:var(--b1)} .post.lv-B2{--lv:var(--b2)}
+
+.ptag{position:relative;display:flex;align-items:center;gap:8px;margin-bottom:18px}
+.ptag b{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--lv)}
+.ptag span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint)}
+
+/* ---- sentence post */
+.psent{position:relative;font-size:clamp(23px,6.2vw,31px);font-weight:600;
+  line-height:1.32;letter-spacing:-.02em}
+.psent em{font-style:normal;color:var(--lv);font-weight:700}
+.pword{position:relative;margin-top:22px;font-size:19px;font-weight:600;
+  letter-spacing:-.02em}
+.pword i{font-style:normal;font-weight:400;opacity:.45;margin-right:.3em}
+.pgram{position:relative;margin-top:5px;font-size:13px;color:var(--faint);
+  line-height:1.5}
+
+/* ---- synonym post */
+.pmean{position:relative;font-size:12px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.phead{position:relative;font-size:clamp(26px,7vw,36px);font-weight:700;
+  letter-spacing:-.035em;line-height:1.1;margin-bottom:22px}
+.psyn{position:relative;display:flex;flex-direction:column;gap:1px}
+.psyn div{display:flex;align-items:baseline;gap:10px;padding:11px 0;
+  border-top:1px solid var(--hair)}
+.psyn b{flex:1;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.psyn b i{font-style:normal;font-weight:400;opacity:.45;margin-right:.3em}
+.psyn span{font-size:10px;font-weight:700;letter-spacing:.08em}
+
+/* ---- the reveal */
+.preveal{position:relative;margin-top:20px;font-size:16px;line-height:1.45;
+  color:var(--dim);letter-spacing:-.01em;
+  max-height:0;opacity:0;overflow:hidden;
+  transition:max-height .34s cubic-bezier(.32,.72,0,1),opacity .24s ease}
+.post.open .preveal{max-height:260px;opacity:1}
+.preveal em{font-style:normal;color:var(--ink)}
+.phint{position:relative;margin-top:18px;font-size:12px;color:var(--faint);
+  letter-spacing:.04em;transition:opacity .2s ease}
+.post.open .phint{opacity:0}
+
+/* ---- the side rail */
+.prail{position:absolute;right:16px;bottom:118px;display:flex;
+  flex-direction:column;gap:12px;z-index:2}
+.fbtn{width:46px;height:46px;border:0;border-radius:50%;cursor:pointer;
+  background:var(--glass);backdrop-filter:var(--blur);color:var(--ink);
+  font-size:17px;line-height:1;display:flex;align-items:center;
+  justify-content:center;font-family:var(--font);
+  transition:transform .18s cubic-bezier(.32,.72,0,1),background .18s ease}
+.fbtn:active{transform:scale(.9)}
+.fbtn.on{background:var(--lv);color:#fff}
+.fbtn.pop{animation:fpop .34s cubic-bezier(.32,.72,0,1)}
+@keyframes fpop{0%{transform:scale(1)}42%{transform:scale(1.28)}100%{transform:scale(1)}}
+
+.fempty{height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:0 34px;gap:10px}
+.fempty b{font-size:19px;font-weight:600;letter-spacing:-.02em}
+.fempty span{font-size:15px;color:var(--faint);line-height:1.45}
+
+@media (prefers-reduced-motion:reduce){
+  .feed{scroll-behavior:auto}
+  .fbtn.pop{animation:none}
+}
+
 /* ---------- word introduction ----------
    The first time a word appears it gets a page of its own: how it is written,
    what it means in both languages, how it inflects, and one real sentence.
@@ -672,6 +755,12 @@ select{appearance:none;-webkit-appearance:none}
       <p class="sub" style="margin:8px 0 2px" data-i18n="br.tapHint">Tap to mark known · tap again to undo</p>
       <div id="br-list"></div>
     </div>
+    <nav class="nav"></nav>
+  </section>
+
+  <!-- ============ FEED ============ -->
+  <section id="v-feed" class="view">
+    <div class="feed" id="feed"></div>
     <nav class="nav"></nav>
   </section>
 
