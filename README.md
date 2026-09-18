@@ -263,8 +263,14 @@ each tagged with its own level, so you see which register you are reaching for.
 Colours come from the level: A1 green, A2 cyan, B1 orange, B2 purple, washed
 behind the text rather than drawn around it.
 
-Tap a post for the meaning, ♪ to hear it, ♥ to keep it. The heart is the only
-thing the Feed writes, and what you keep shows up under **Words → Saved**.
+**It reads to you.** Every post is spoken in German as it settles on screen —
+the sentence, or a synonym card's words in turn. 🔊 mutes it and 🔇 turns it
+back on; the choice sticks. It has its own mute rather than following
+Settings → Voice, because that toggle is for the study cards and ships off,
+which is precisely why the Feed's old speaker button appeared to do nothing.
+
+Tap a post for the meaning, ♥ to keep it. The heart and the mute are the only
+things the Feed writes, and what you keep shows up under **Words → Saved**.
 
 Scrolling is endless, but it does not repeat itself: the deck remembers what it
 has already shown and only starts the cycle again once everything has been. The
@@ -496,7 +502,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-598 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+607 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

@@ -626,8 +626,8 @@ function A_extendedSample(w){
       ok('a post carries its level colour', /class="post lv-(A1|A2|B1|B2)"/.test(h), h.slice(0, 60));
       ok('the word is picked out of the sentence', h.includes('<em>'));
       ok('the meaning is there to reveal', h.includes('preveal'));
-      ok('and it can be listened to and saved',
-        h.includes('data-say=') && h.includes('data-save='));
+      ok('and it can be muted and saved',
+        h.includes('data-mute=') && h.includes('data-save='));
     }
     const syn = M.feedDeck(60).find(p => p.kind === 'syn');
     ok('synonym cards are produced', !!syn);
@@ -690,14 +690,69 @@ function A_extendedSample(w){
       ok('a sentence post records which sentence it chose',
         typeof p.si === 'number' && p.si >= 0, p && p.si);
       const h = M.postHTML(p);
-      ok('and the listen button carries it', h.includes('data-si="' + p.si + '"'),
-        (h.match(/data-si="[^"]*"/) || [])[0]);
+      ok('and the post carries that sentence as what to read aloud',
+        h.includes('data-speak="' + M.esc(p.s[0]) + '"'),
+        (h.match(/data-speak="[^"]*"/) || [])[0]);
       // the rendered sentence carries <em> around the target, so compare the
       // text with the markup stripped rather than a raw substring
       const rendered = (h.match(/<div class="psent">(.*?)<\/div>/) || ['', ''])[1]
         .replace(/<\/?em>/g, '');
       ok('the recorded sentence is the one rendered', rendered === M.esc(p.s[0]),
         rendered.slice(0, 40) + ' vs ' + p.s[0].slice(0, 40));
+    }
+
+    // ---- reading aloud
+    // The Feed's speaker used to route through say(), which returns false
+    // unless Settings → Voice is on. That setting ships off, so the button
+    // silently did nothing. The Feed has its own mute now and forces past it.
+    {
+      const spoken = [];
+      const realSpeak = w.speechSynthesis && w.speechSynthesis.speak;
+      // capture what would be uttered without needing a real voice engine
+      const saveSpeak = M.A.set.speak;
+      M.A.set.speak = false;                 // the study toggle stays OFF
+
+      ok('the study Voice setting is off, as it ships', M.A.set.speak === false);
+      ok('the Feed is unmuted by default', M.feedMuted() === false);
+
+      // a forced say must not be blocked by the study toggle
+      ok('say() refuses without the toggle unless forced',
+        M.say('Test', 'de-DE') === false);
+      ok('and goes through when the Feed forces it',
+        M.say('Test', 'de-DE', true) === true || !M.speechAvailable(),
+        'speechAvailable=' + M.speechAvailable());
+
+      // every post says what to read
+      const deck2 = M.feedDeck(12);
+      const sentP = deck2.find(p => p.kind === 'sent');
+      const synP = M.feedDeck(60).find(p => p.kind === 'syn');
+      ok('a sentence post reads the German sentence',
+        M.postHTML(sentP).includes('data-speak="' + M.esc(sentP.s[0]) + '"'));
+      if (synP) {
+        const lemmas = synP.cluster.ids.map(id => M.A.words[id].lemma).join(', ');
+        ok('a synonym post reads its words',
+          M.postHTML(synP).includes('data-speak="' + M.esc(lemmas) + '"'));
+      }
+
+      // muting silences it and the buttons agree
+      M.renderFeed();
+      const feedEl = w.document.getElementById('feed');
+      const first = feedEl.children[0];
+      ok('posts are rendered with a mute control',
+        !!feedEl.querySelector('[data-mute]'));
+      M.A.set.feedMute = true;
+      ok('a muted feed reads nothing', (() => {
+        M.speakPost(first);                  // must not throw, must not speak
+        return M.feedMuted() === true;
+      })());
+      M.A.set.feedMute = false;
+
+      ok('the post under the reader is the one read',
+        M.currentPost(feedEl) === feedEl.children[0]);
+
+      M.A.set.speak = saveSpeak;
+      M.A.set.feedMute = false;
+      void realSpeak;
     }
 
     // ---- the DOM cannot grow without bound

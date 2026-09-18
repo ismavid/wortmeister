@@ -44,7 +44,7 @@ const CFG = {
     exam: '2026-11-11', newPerDay: 5, maxReviews: 60,
     scope: { A1: true, A2: true, B1: true, 'B2-core': true, 'B2-extended': false },
     streak: 0, lastDay: null, history: {}, medians: {}, speak: false, lang: 'en',
-    saved: []
+    saved: [], feedMute: false
   }
 };
 const G = { AGAIN: 0, HARD: 1, GOOD: 2, EASY: 3 };
@@ -123,7 +123,8 @@ const I18N = {
     'feed.tap': 'Tap for the meaning',
     'feed.samemeaning': 'Same meaning',
     'feed.theyallmean': 'They all mean',
-    'feed.listen': 'Listen',
+    'feed.mute': 'Mute',
+    'feed.unmute': 'Unmute',
     'feed.save': 'Save',
     'feed.emptyTitle': 'Nothing to read yet',
     'feed.emptyBody': 'Study a few words and the feed fills with real sentences using them.',
@@ -292,7 +293,8 @@ const I18N = {
     'feed.tap': 'Toca para ver el significado',
     'feed.samemeaning': 'Mismo significado',
     'feed.theyallmean': 'Todas significan',
-    'feed.listen': 'Escuchar',
+    'feed.mute': 'Silenciar',
+    'feed.unmute': 'Activar sonido',
     'feed.save': 'Guardar',
     'feed.emptyTitle': 'Todavía no hay nada que leer',
     'feed.emptyBody': 'Estudia unas palabras y el feed se llena de frases reales que las usan.',
@@ -1310,8 +1312,11 @@ function stopSpeech() {
   if (speechAvailable()) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
 }
 /** Say `text` in `lang`. Never throws — speech is a nicety, not a dependency. */
-function say(text, lang) {
-  if (!A.set || !A.set.speak || !speechAvailable()) return false;
+function say(text, lang, force) {
+  // `force` is for the Feed, which has its own mute rather than riding on the
+  // study Voice toggle — that toggle is off by default, which is why the Feed's
+  // speaker button appeared to do nothing at all.
+  if (!A.set || (!A.set.speak && !force) || !speechAvailable()) return false;
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (!clean) return false;
   try {
@@ -1655,14 +1660,20 @@ function go(name) {
   $$('.nav').forEach(n => $$('button', n).forEach(b =>
     b.classList.toggle('on', b.dataset.go === name)));
   if (name === 'home') renderHome();
-  if (name === 'feed') renderFeed();
+  if (name === 'feed') {
+    renderFeed();
+    // Safari refuses to speak outside a user gesture until it has spoken
+    // inside one. Arriving here is a tap, so the first post unlocks it and
+    // every later post can be read on scroll.
+    speakPost(currentPost($('#feed')));
+  }
   if (name === 'browse') renderBrowse();
   if (name === 'stats') renderStats();
   if (name === 'settings') renderSettings();
   if (name === 'triage') startTriage();
   if (name === 'study') startStudy();
   setAmbientLive(name === 'study' || name === 'triage');
-  if (name !== 'study') stopSpeech();
+  if (name !== 'study' && name !== 'feed') stopSpeech();
   window.scrollTo(0, 0);
 }
 function buildNav() {
@@ -3067,6 +3078,9 @@ function feedDeck(n, fresh) {
   return deck;
 }
 
+/** The Feed reads aloud by default; this is the only thing that silences it. */
+function feedMuted() { return !!A.set.feedMute; }
+
 function feedSaved() {
   if (!Array.isArray(A.set.saved)) A.set.saved = [];
   return A.set.saved;
@@ -3085,7 +3099,8 @@ function postHTML(p) {
         ? '<i>' + esc(x.article) + '</i>' : '') + esc(x.lemma) +
         '</b><span class="p-' + l + '">' + l + '</span></div>';
     }).join('');
-    return '<article class="post lv-' + lv + '" data-id="' + ws[0].id + '">' +
+    return '<article class="post lv-' + lv + '" data-id="' + ws[0].id +
+      '" data-speak="' + esc(ws.map(x => x.lemma).join(', ')) + '">' +
       '<div class="ptag"><b>' + T('feed.samemeaning') + '</b><span>' +
         esc(posLabel(p.cluster.pos)) + ' · ' + ws.length + '</span></div>' +
       '<div class="pmean">' + T('feed.theyallmean') + '</div>' +
@@ -3101,7 +3116,8 @@ function postHTML(p) {
     '</em>' + esc(de.slice(at + len));
   const es = A.glosses[w.id];
   const forms = introForms(w);
-  return '<article class="post lv-' + lv + '" data-id="' + w.id + '">' +
+  return '<article class="post lv-' + lv + '" data-id="' + w.id +
+    '" data-speak="' + esc(de) + '">' +
     '<div class="ptag"><b>' + lv + '</b><span>' + esc(posLabel(w.pos)) + '</span></div>' +
     '<div class="psent">' + marked + '</div>' +
     '<div class="pword">' + displayHead(w) + '</div>' +
@@ -3109,15 +3125,49 @@ function postHTML(p) {
     '<div class="preveal"><em>' + esc(en) + '</em><br>' +
       esc(w.en) + (es ? ' · ' + esc(es) : '') + '</div>' +
     '<div class="phint">' + T('feed.tap') + '</div>' +
-    rail(w, saved, p.si) + '</article>';
+    rail(w, saved) + '</article>';
 }
-function rail(w, saved, si) {
+function rail(w, saved) {
   const on = saved.includes(w.id) ? ' on' : '';
+  const m = feedMuted();
   return '<div class="prail">' +
-    '<button class="fbtn" data-say="' + w.id + '" data-si="' + (si == null ? -1 : si) +
-      '" aria-label="' + T('feed.listen') + '">♪</button>' +
+    '<button class="fbtn' + (m ? ' muted' : '') + '" data-mute="1" aria-label="' +
+      T(m ? 'feed.unmute' : 'feed.mute') + '">' + (m ? '🔇' : '🔊') + '</button>' +
     '<button class="fbtn' + on + '" data-save="' + w.id + '" aria-label="' + T('feed.save') + '">♥</button>' +
     '</div>';
+}
+
+/** The post currently being read, so a small scroll does not restart it. */
+let FEED_OBS = null, FEED_SPOKEN = null;
+
+/** Read a post aloud. German only — the sentence, or the synonyms in turn. */
+function speakPost(el) {
+  if (!el || feedMuted() || FEED_SPOKEN === el) return;
+  const text = el.dataset && el.dataset.speak;
+  if (!text) return;
+  FEED_SPOKEN = el;
+  say(text, 'de-DE', true);
+}
+
+/** Whichever post is filling the screen right now. */
+function currentPost(el) {
+  const h = el.clientHeight;
+  if (!h) return el.children[0] || null;
+  return el.children[Math.round(el.scrollTop / h)] || null;
+}
+
+/**
+ * Read each post as it settles into view. An observer rather than a scroll
+ * handler, so a fast flick past ten posts reads the one you stop on instead
+ * of all ten.
+ */
+function watchFeed(el) {
+  if (typeof IntersectionObserver === 'undefined') return;
+  if (FEED_OBS) FEED_OBS.disconnect();
+  FEED_OBS = new IntersectionObserver(entries => {
+    for (const en of entries) if (en.intersectionRatio >= 0.7) speakPost(en.target);
+  }, { root: el, threshold: [0.7] });
+  for (const p of el.children) FEED_OBS.observe(p);
 }
 
 let FEED = [];
@@ -3133,6 +3183,7 @@ function renderFeed(more) {
   }
   el.insertAdjacentHTML('beforeend', FEED.map(postHTML).join(''));
   pruneFeed(el);
+  watchFeed(el);
 }
 
 /**
@@ -3164,10 +3215,19 @@ function pruneFeed(el) {
 }
 
 $('#feed').addEventListener('click', e => {
-  const say = e.target.closest('[data-say]');
-  if (say) {
-    const w = A.words[+say.dataset.say];
-    if (w) say_(w, +say.dataset.si);
+  const mute = e.target.closest('[data-mute]');
+  if (mute) {
+    A.set.feedMute = !feedMuted();
+    saveSettings();
+    const m = feedMuted();
+    // the mute is global, so every post's button has to agree
+    $$('#feed [data-mute]').forEach(b => {
+      b.classList.toggle('muted', m);
+      b.textContent = m ? '🔇' : '🔊';
+      b.setAttribute('aria-label', T(m ? 'feed.unmute' : 'feed.mute'));
+    });
+    if (m) { stopSpeech(); FEED_SPOKEN = null; }
+    else { FEED_SPOKEN = null; speakPost(currentPost($('#feed'))); }
     return;
   }
   const sv = e.target.closest('[data-save]');
@@ -3190,13 +3250,6 @@ $('#feed').addEventListener('scroll', () => {
 }, { passive: true });
 
 /** Speak a word the way the study card would. */
-/** Read what is on the card. The post picks a sentence at random, so playing
-    sentencesFor(w)[0] could read one the reader is not looking at. */
-function say_(w, si) {
-  const sents = sentencesFor(w);
-  if (sents && si >= 0 && sents[si]) return say(sents[si][0], 'de-DE');
-  say(sents ? sents[0][0] : w.lemma, 'de-DE');
-}
 
 /* ============================ browse ============================ */
 function renderBrowse() {
@@ -3525,7 +3578,8 @@ window.__wm = {
   markIntroduced, isIntroduced, clearIntroduced,
   reviewBudget, isFragile, migrateReviewCap,
   buildClusters, feedDeck, feedWords, postHTML, renderFeed, senseKey, esSenses, NAV,
-  feedSaved, pruneFeed, say_, renderBrowse,
+  feedSaved, pruneFeed, renderBrowse,
+  feedMuted, speakPost, currentPost, watchFeed,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

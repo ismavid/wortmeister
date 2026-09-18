@@ -337,6 +337,8 @@ body.kb .typein.sm{min-height:44px}
   transition:transform .18s cubic-bezier(.32,.72,0,1),background .18s ease}
 .fbtn:active{transform:scale(.9)}
 .fbtn.on{background:var(--lv);color:#fff}
+/* muted reads as switched off, not as the accent colour of a liked post */
+.fbtn.muted{background:rgba(255,255,255,.06);color:var(--faint)}
 .fbtn.pop{animation:fpop .34s cubic-bezier(.32,.72,0,1)}
 @keyframes fpop{0%{transform:scale(1)}42%{transform:scale(1.28)}100%{transform:scale(1)}}
 
