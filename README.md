@@ -321,6 +321,33 @@ playback. See *Not in this build* below.
 
 ---
 
+## Refresh: testing what you already know
+
+**Stats → Refresh** drills up to 20 of your **mastered** words — the ones on a
+21-day interval or longer, plus any you retired after studying. It uses the
+same production modes as a real session: typing, articles, verb forms,
+prepositions, cloze.
+
+It is deliberately **not** a review:
+
+- **Getting one right writes nothing at all.** The word is already on a long
+  interval; a pass teaches the scheduler nothing it does not know.
+- **Missing one is the whole point.** That runs the real lapse path, so the
+  word drops to relearning and comes back into the daily queue. If you have
+  lost it, it should be back in rotation.
+- **It never spends the day's review budget.** Refreshes are counted
+  separately (*Refreshed today*, under Stats), because this is extra work you
+  chose rather than work the schedule asked for — spending the budget would
+  quietly reduce your real reviews.
+
+The session ends on what held: *All held. Nothing went back.* — or how many
+words returned to the queue.
+
+**Words → Mastered** lists the same set, using the same single definition the
+long-arc bar uses, so "mastered" means one thing everywhere in the app.
+
+---
+
 ## A day has a fixed size
 
 **Settings → Maximum reviews per day** is now what it always claimed to be.
@@ -502,7 +529,7 @@ node tools/vocab-build/build_sentences.js <corpus-dir> .
 cd test && npm install && npm test
 ```
 
-607 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
+633 assertions in the main suite, plus 22 in test_compat.js: data-file integrity, boot, triage persistence through a fake
 IndexedDB, the full study loop, the scheduler (learning steps, ease adjustment,
 exam cap, leech detection, response-time grading), local-date handling, typo
 tolerance, mode progression, leech rehabilitation, retention and projection

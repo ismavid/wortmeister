@@ -150,7 +150,31 @@ changes. Phases 1, 2 and 3 are all shipped.
     before any appears twice: measured median gap of 94 posts between the two.
     Ceiling at 370 words: 592 sentence posts + 55 synonym cards, no repeats.
 
-20. **The Feed speaks by default and has its own mute.** `say()` returns
+20. **"Mastered" has exactly one definition: `isMastered(st)`,** which is
+    `wordStrength(st) >= 1` — a word on an interval of `CFG.MASTER_DAYS` or
+    longer, or one retired AFTER being studied. A word retired at sort time
+    (`known` with `r === 0`) is NOT mastered; you never learned it. The
+    long-arc bar, the Words filter and the Refresh drill all call the same
+    function. Do not re-derive it anywhere.
+
+21. **Refresh is not a review.** `startRefresh()` drills mastered words only,
+    with `ST.refresh = true`. Passing one **writes nothing at all** — the word
+    is already on a long interval, so there is nothing to learn from a pass.
+    Missing one is the only case that writes: it runs the real lapse path
+    (`applyGrade(st, AGAIN)`), so the word drops to relearning and re-enters
+    the daily queue. A `known` word is put back to `review` first, because
+    `applyGrade` has no branch for `known`.
+
+    It is logged to `history[today].ref`, never `rev` — spending `rev` would
+    let an optional drill eat the day's review budget and quietly reduce the
+    work the schedule actually asked for.
+
+    **Refresh is a mode of the study screen, not a screen of its own.** `go()`
+    aliases the route to `v-study`; without that alias it looked for
+    `#v-refresh`, found nothing, and left every view hidden — a working
+    session behind a blank screen. `startStudy()` must clear `ST.refresh`.
+
+22. **The Feed speaks by default and has its own mute.** `say()` returns
     false unless `A.set.speak` is on, and that setting ships OFF — which is
     why the Feed's speaker button did nothing at all until 18 Sep 2026. The
     Feed passes `say(text, lang, true)` to force past it and carries its own
@@ -165,13 +189,13 @@ changes. Phases 1, 2 and 3 are all shipped.
     tab is that gesture. `go()` therefore must NOT `stopSpeech()` for
     `feed`, only on the way out.
 
-21. **The Feed is a reading surface, never a study surface.** It must not
+23. **The Feed is a reading surface, never a study surface.** It must not
     schedule, log or grade anything — the suite asserts that building a deck
     and rendering it leaves every review record untouched. The only thing it
     writes is `A.set.saved`. Synonym clusters are built at runtime from the
     glosses, **never stored**, so there is no file to version.
 
-22. **Cluster on both languages, not just English.** `buildClusters()` groups
+24. **Cluster on both languages, not just English.** `buildClusters()` groups
     words whose first English sense matches, then keeps only members that also
     share a SPANISH sense. Without the cross-check it collects senses of the
     *English* word rather than German synonyms — "line" swept up Linie, Zeile,
@@ -179,7 +203,7 @@ changes. Phases 1, 2 and 3 are all shipped.
     ones over 1,187 words. Draw synonym cards from their own pool: only 1 word
     in 6 is clustered, so picking off the sentence cursor yields almost none.
 
-23. **Removing content above the viewport: set scrollTop absolutely.**
+25. **Removing content above the viewport: set scrollTop absolutely.**
     Chrome anchors scroll when nodes above the reader are removed; Safari does
     not. `pruneFeed()` subtracted the pruned height and landed 24 posts away
     on a 12-post prune, because Chrome's correction and ours both applied.
@@ -187,13 +211,13 @@ changes. Phases 1, 2 and 3 are all shipped.
     `CFG.FEED_MAX`; with no layout at all (headless) it trims to the cap and
     leaves scroll alone, since there is no reader to keep in place.
 
-24. **An entrance animation must never be the only thing making content
+26. **An entrance animation must never be the only thing making content
     visible.** Use `animation-fill-mode: backwards` with a visible resting
     state, never `opacity: 0` plus `forwards` — a paused compositor, a
     hidden tab or a dropped keyframe then leaves the element blank. The intro
     card was caught doing exactly this before it shipped. The suite lints it.
 
-25. **Never `var()` a custom property that `:root` does not declare.** An
+27. **Never `var()` a custom property that `:root` does not declare.** An
    undefined var inside `linear-gradient()` invalidates the whole `background`
    declaration silently — no console error, the element just renders
    transparent. The milestone bar shipped invisible this way once (`--cyan`
@@ -212,7 +236,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        607 assertions, jsdom + fake-indexeddb
+test/test_app.js        633 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -283,7 +307,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 607 passed, then 22 passed
+cd test && npm install && npm test     # expect: 633 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

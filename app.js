@@ -31,6 +31,7 @@ const CFG = {
   MATCH_PAIRS: 6,                        // words per pairing round
   MATCH_EVERY: 22,                       // cards between pairing rounds
   FEED_MAX: 48,                          // posts kept in the DOM while scrolling
+  REFRESH_MAX: 20,                       // mastered words per refresh session
   SETTINGS_DEBOUNCE: 1500,
   FUZZ: 1,                               // interval jitter on; 0 disables (tests)
   FUZZ_MIN_INTERVAL: 3,                  // 1–2 day intervals stay exact
@@ -173,7 +174,7 @@ const I18N = {
     'br.search': 'Search German or English',
     'br.allLevels': 'All levels', 'br.allWords': 'All words',
     'br.notSorted': 'Not sorted', 'br.learning': 'Learning',
-    'br.inReview': 'In review', 'br.known': 'Known', 'br.difficult': 'Difficult', 'br.saved': 'Saved',
+    'br.inReview': 'In review', 'br.known': 'Known', 'br.difficult': 'Difficult', 'br.saved': 'Saved', 'br.mastered': 'Mastered',
     'br.tapHint': 'Tap to mark known · tap again to undo',
     'br.noMatch': 'No words match that',
     'br.backQueue': 'Back in the queue — tap again to mark it known',
@@ -196,6 +197,14 @@ const I18N = {
     'stats.knewRate': 'You already knew, of what you sorted',
     'stats.target': 'Words you will need to learn',
     'stats.masteredSoFar': 'Mastered so far', 'stats.stillLearning': 'Still learning',
+    'refresh.title': 'Refresh',
+    'refresh.blurb': 'Test the words you have mastered. Getting one right changes nothing — it is already learned. Missing one sends it back into the queue.',
+    'refresh.go': 'Refresh {n} words',
+    'refresh.none': 'Nothing mastered yet',
+    'refresh.today': 'Refreshed today',
+    'refresh.allHeld': 'All held. Nothing went back.',
+    'refresh.lostOne': '1 word went back into the queue',
+    'refresh.lostMany': '{n} words went back into the queue',
     'stats.thisWeek': 'This week', 'stats.leftToLearn': 'Words left to learn',
     'stats.finishedBy': 'Finished by', 'stats.exam': 'Exam',
     'stats.noData': 'not enough data yet',
@@ -349,7 +358,7 @@ const I18N = {
     'br.allLevels': 'Todos los niveles', 'br.allWords': 'Todas las palabras',
     'br.notSorted': 'Sin clasificar', 'br.learning': 'Aprendiendo',
     'br.inReview': 'En repaso', 'br.known': 'Conocidas',
-    'br.difficult': 'Difíciles', 'br.saved': 'Guardadas',
+    'br.difficult': 'Difíciles', 'br.saved': 'Guardadas', 'br.mastered': 'Dominadas',
     'br.tapHint': 'Toca para marcar conocida · toca otra vez para deshacer',
     'br.noMatch': 'Ninguna palabra coincide',
     'br.backQueue': 'De vuelta en la cola — toca otra vez para marcarla conocida',
@@ -374,6 +383,14 @@ const I18N = {
     'stats.knewRate': 'Ya conocías, de lo que clasificaste',
     'stats.target': 'Palabras que tendrás que aprender',
     'stats.masteredSoFar': 'Dominadas hasta ahora',
+    'refresh.title': 'Repaso',
+    'refresh.blurb': 'Pon a prueba las palabras que ya dominas. Acertar no cambia nada — ya está aprendida. Fallar la devuelve a la cola.',
+    'refresh.go': 'Repasar {n} palabras',
+    'refresh.none': 'Todavía no dominas ninguna',
+    'refresh.today': 'Repasadas hoy',
+    'refresh.allHeld': 'Todas aguantaron. Ninguna volvió atrás.',
+    'refresh.lostOne': '1 palabra volvió a la cola',
+    'refresh.lostMany': '{n} palabras volvieron a la cola',
     'stats.stillLearning': 'Aún aprendiendo',
     'stats.thisWeek': 'Esta semana',
     'stats.leftToLearn': 'Palabras por aprender',
@@ -1519,6 +1536,18 @@ function logAnswer(isNew, grade) {
   queueSettings();
 }
 
+/**
+ * Refreshes get their own counter. Spending `rev` would eat the day's review
+ * budget, which would mean an optional drill quietly reduced the work the
+ * schedule actually asked for.
+ */
+function logRefresh() {
+  const d = today();
+  const h = A.set.history[d] || (A.set.history[d] = { new: 0, rev: 0, again: 0 });
+  h.ref = (h.ref || 0) + 1;
+  queueSettings();
+}
+
 /** Whole days between two local YYYY-MM-DD dates. */
 function daysBetween(a, b) {
   const t = s => new Date(s + 'T12:00:00').getTime();   // midday dodges DST
@@ -1656,7 +1685,11 @@ const NAV = [
 let current = 'home';
 function go(name) {
   current = name;
-  $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
+  // Refresh is a mode of the study screen, not a screen of its own. Without
+  // this alias go('refresh') looked for #v-refresh, found nothing, and left
+  // every view hidden — a blank screen behind a working session.
+  const viewId = 'v-' + (name === 'refresh' ? 'study' : name);
+  $$('.view').forEach(v => v.classList.toggle('on', v.id === viewId));
   $$('.nav').forEach(n => $$('button', n).forEach(b =>
     b.classList.toggle('on', b.dataset.go === name)));
   if (name === 'home') renderHome();
@@ -1672,8 +1705,9 @@ function go(name) {
   if (name === 'settings') renderSettings();
   if (name === 'triage') startTriage();
   if (name === 'study') startStudy();
-  setAmbientLive(name === 'study' || name === 'triage');
-  if (name !== 'study' && name !== 'feed') stopSpeech();
+  if (name === 'refresh') startRefresh();
+  setAmbientLive(name === 'study' || name === 'triage' || name === 'refresh');
+  if (name !== 'study' && name !== 'feed' && name !== 'refresh') stopSpeech();
   window.scrollTo(0, 0);
 }
 function buildNav() {
@@ -1750,6 +1784,23 @@ function wordStrength(st) {
     return 0.3 + 0.7 * Math.max(0, st.i) / CFG.MASTER_DAYS;
   }
   return 0;
+}
+
+/**
+ * Mastered: on a 21-day interval or longer, or retired after being studied.
+ * The same test the long-arc bar uses, so "Mastered" means one thing in the
+ * progress bar, the Words filter and the Refresh drill.
+ */
+function isMastered(st) { return wordStrength(st) >= 1; }
+
+function masteredWords() {
+  const out = [];
+  for (const [id, st] of A.state) {
+    if (!isMastered(st)) continue;
+    const w = A.words[id];
+    if (w && inScope(w)) out.push(w);
+  }
+  return out;
 }
 
 function milestone() {
@@ -2195,6 +2246,8 @@ const ST = {
   elapsed: 0, again: new Map(), t0session: 0, wrong: 0, sent: null,
   aux: null,        // auxiliary picked in the verb-form drill
   pat: null,        // rection pattern being asked
+  refresh: false,   // a mastered-words drill rather than a scheduled session
+  lost: 0,          // mastered words missed in this refresh
   prep: null        // preposition picked, before the case step
 };
 /* Modes that grade themselves and have no reveal step. `match` must be here or
@@ -2215,7 +2268,33 @@ function clearIntroduced() { INTRO = new Set(); }
 /** Pairing-round state. Separate from ST because a round spans five cards. */
 const MT = { words: null, miss: null, pairedIds: null, sel: null, t0: 0 };
 
+/**
+ * A refresh session: mastered words only, and deliberately not a review.
+ *
+ * Passing one teaches the scheduler nothing — the word is already on a long
+ * interval — so a pass writes NOTHING. Missing one means you have lost it, so
+ * that single case runs the real lapse path and the word comes back into the
+ * daily queue. It also does not spend the day's review budget, because this is
+ * extra work you chose rather than work the schedule asked for.
+ */
+function startRefresh() {
+  const words = masteredWords();
+  const rnd = seededRandom(Date.now() & 0xffff);
+  ST.queue = shuffleSeeded(words, rnd).slice(0, CFG.REFRESH_MAX);
+  ST.i = 0; ST.done = 0; ST.again = new Map();
+  ST.wrong = 0; ST.lost = 0; ST.refresh = true; ST.t0session = Date.now();
+  MT.words = null;
+  clearIntroduced();
+  // every word here has been answered many times, so none of them is new and
+  // no pairing round can form: pickMatchRound only takes words at r <= 2
+  $('#st-title').classList.remove('hidden');
+  $('#st-title').textContent = T('refresh.title');
+  showCard();
+}
+
 function startStudy() {
+  ST.refresh = false;
+  $('#st-title').classList.add('hidden');
   ST.queue = buildSession(); ST.i = 0; ST.done = 0; ST.again = new Map();
   clearIntroduced();
   ST.wrong = 0; ST.t0session = Date.now();
@@ -2390,10 +2469,16 @@ function showCard() {
     $('#st-gram').innerHTML =
       `<b>${ST.done}</b> cards · <b>${acc}%</b> right · <b>${mins}</b> min`;
     $('#st-gram').classList.remove('hidden');
-    const o = overview();
-    $('#st-hint').textContent = o.dayDone
-      ? T('st.allDone')
-      : o.cards + ' still waiting today';
+    if (ST.refresh) {
+      const lost = ST.lost || 0;
+      $('#st-hint').textContent = !lost ? T('refresh.allHeld')
+        : T(lost === 1 ? 'refresh.lostOne' : 'refresh.lostMany', { n: nfmt(lost) });
+    } else {
+      const o = overview();
+      $('#st-hint').textContent = o.dayDone
+        ? T('st.allDone')
+        : o.cards + ' still waiting today';
+    }
     hidePads();
     $('#st-donepad').classList.remove('hidden');
     $('#st-meter').style.width = '100%';
@@ -2571,6 +2656,28 @@ function gradeWord(w, grade, elapsed, mode) {
   const wasNew = !st || st.s === 'queued' || st.s === 'new';
   if (!st) st = newState();
   pushTime(mode, elapsed);
+
+  if (ST.refresh) {
+    // Getting it right changes nothing: it was already mastered. Getting it
+    // wrong is the whole point of the exercise, so that runs the real lapse
+    // path and the word re-enters the daily queue.
+    if (grade === G.AGAIN) {
+      ST.wrong++;
+      ST.lost = (ST.lost || 0) + 1;
+      // a word retired after study sits at 'known'; applyGrade has no branch
+      // for that, so put it back on the review path before lapsing it
+      if (st.s === 'known') st.s = 'review';
+      st.m[mode] = (st.m[mode] || 0) + 1;
+      st.t = Math.round(elapsed);
+      applyGrade(st, G.AGAIN, Date.now());
+      setState(w.id, st);
+    }
+    logRefresh();
+    ST.done++;
+    return;
+  }
+
+
   st.t = Math.round(elapsed);
   st.m[mode] = (st.m[mode] || 0) + 1;
   if (grade === G.AGAIN) ST.wrong++;
@@ -3267,6 +3374,7 @@ function renderBrowse() {
       if (stf === 'known' && s !== 'known') continue;
       if (stf === 'leech' && s !== 'leech') continue;
       if (stf === 'saved' && !feedSaved().includes(w.id)) continue;
+      if (stf === 'mastered' && !isMastered(st)) continue;
     }
     if (q && !w.lemma.toLowerCase().includes(q) && !w.en.toLowerCase().includes(q)
       && !gloss(w).toLowerCase().includes(q)) continue;
@@ -3338,6 +3446,7 @@ function renderStats() {
   const projColor = proj == null ? 'var(--dim)'
     : (proj <= dte ? 'var(--green)' : 'var(--gold)');
   const examLabel = fmt(new Date(A.set.exam + 'T09:00:00').getTime());
+  const refToday = (A.set.history[today()] || {}).ref || 0;
 
   $('#stats-body').innerHTML = `
     <h2>${T('stats.where')}</h2>
@@ -3373,6 +3482,13 @@ function renderStats() {
       <div class="stat"><span>${T('stats.finishedBy')}</span><b style="color:${projColor}">${projLabel}</b></div>
       <div class="stat"><span>${T('stats.exam')}</span><b>${examLabel}</b></div>
     </div>
+    <h2>${T('refresh.title')}</h2>
+    <p class="sub" style="margin:0 0 10px">${T('refresh.blurb')}</p>
+    <button class="btn ghost sm" id="btn-refresh"${ms.mastered ? '' : ' disabled'}>${
+      ms.mastered ? T('refresh.go', { n: nfmt(Math.min(ms.mastered, CFG.REFRESH_MAX)) })
+                  : T('refresh.none')}</button>
+    ${refToday ? `<div class="card"><div class="stat"><span>${T('refresh.today')}</span><b>${
+      nfmt(refToday)}</b></div></div>` : ''}
     ${leeches.length ? `<h2>${T('stats.leechTitle')}</h2>
       <p class="sub" style="margin:0 0 6px">${T('stats.leechSub')}</p>
       <div class="card">${leeches.slice(0, 40).map(w => {
@@ -3388,6 +3504,7 @@ function renderStats() {
 }
 
 $('#stats-body').addEventListener('click', e => {
+  if (e.target.closest('#btn-refresh')) { go('refresh'); return; }
   if (e.target.closest('#leech-all')) {
     const n = rehabAllLeeches();
     toast(T(n === 1 ? 'stats.backOne' : 'stats.backMany', { n: nfmt(n) }));
@@ -3580,6 +3697,7 @@ window.__wm = {
   buildClusters, feedDeck, feedWords, postHTML, renderFeed, senseKey, esSenses, NAV,
   feedSaved, pruneFeed, renderBrowse,
   feedMuted, speakPost, currentPost, watchFeed,
+  isMastered, masteredWords, startRefresh, logRefresh, go,
   wordStrength, weekStart, weekProgress, stageMatchRound, requeueIfSoon,
   projectMomentum, rubberband, spring,
   fuzzInterval, seededRandom, daySeed, shuffleSeeded, familyKey, spaceSiblings,

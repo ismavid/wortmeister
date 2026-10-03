@@ -786,6 +786,114 @@ function A_extendedSample(w){
     for (const [k, v] of feedStateBackup) M.A.state.set(k, v);
   }
 
+  // ------------------------------------------------------------- refresh
+  // A drill over mastered words. Passing one must write nothing at all;
+  // missing one is the only thing that may touch a record.
+  console.log('\n== refresh ==');
+  {
+    const saveState = new Map(M.A.state);
+    const saveHist = JSON.parse(JSON.stringify(M.A.set.history));
+    const DAY = M.CFG.DAY, now = Date.now();
+    const pick = M.A.words.filter(x => M.inScope(x)).slice(0, 12);
+    M.A.state.clear(); M.A.dirty.clear();
+
+    const put = (w, s, i, r) => {
+      const st = M.newState(); st.s = s; st.i = i; st.r = r; st.d = now + i * DAY;
+      M.A.state.set(w.id, st); return st;
+    };
+    const longReview = put(pick[0], 'review', 30, 8);     // mastered
+    const atThreshold = put(pick[1], 'review', M.CFG.MASTER_DAYS, 7);  // mastered
+    const justUnder = put(pick[2], 'review', M.CFG.MASTER_DAYS - 1, 7); // not yet
+    const retiredAfter = put(pick[3], 'known', 0, 5);     // mastered: studied then retired
+    const retiredAtSort = put(pick[4], 'known', 0, 0);    // never studied: not mastered
+    const learning = put(pick[5], 'learning', 0, 2);      // not mastered
+    const leech = put(pick[6], 'leech', 10, 9);           // not mastered
+
+    ok('a long interval counts as mastered', M.isMastered(longReview));
+    ok('exactly the threshold counts', M.isMastered(atThreshold), M.CFG.MASTER_DAYS);
+    ok('one day under does not', !M.isMastered(justUnder));
+    ok('retired after studying counts', M.isMastered(retiredAfter));
+    ok('retired at sort time does not — you never learned it',
+      !M.isMastered(retiredAtSort));
+    ok('a word still in learning does not', !M.isMastered(learning));
+    ok('a leech does not', !M.isMastered(leech));
+
+    const mine = M.masteredWords().map(x => x.id).sort((a, b) => a - b);
+    ok('masteredWords returns exactly those three',
+      mine.join(',') === [pick[0].id, pick[1].id, pick[3].id].sort((a, b) => a - b).join(','),
+      mine.join(','));
+
+    // ---- it has to actually put a screen on screen.
+    // go('refresh') looked for #v-refresh, found nothing and left every view
+    // hidden: a working session behind a blank screen.
+    M.go('refresh');
+    ok('the refresh route shows the study screen',
+      w.document.getElementById('v-study').classList.contains('on'));
+    ok('and exactly one view is visible',
+      w.document.querySelectorAll('.view.on').length === 1,
+      [...w.document.querySelectorAll('.view.on')].map(x => x.id).join(','));
+    ok('it is titled as a refresh, not a study session',
+      w.document.getElementById('st-title').textContent === M.T('refresh.title'),
+      w.document.getElementById('st-title').textContent);
+
+    // ---- the drill only draws from them
+    M.startRefresh();
+    ok('a refresh session holds only mastered words',
+      M.ST.queue.every(x => M.isMastered(M.A.state.get(x.id))), M.ST.queue.length);
+    ok('it is capped', M.ST.queue.length <= M.CFG.REFRESH_MAX, M.ST.queue.length);
+    ok('and it flags itself as a refresh', M.ST.refresh === true);
+
+    // ---- passing writes nothing
+    M.A.set.history[M.today()] = { new: 0, rev: 0, again: 0 };
+    const beforePass = JSON.stringify([...M.A.state.entries()]);
+    M.gradeWord(pick[0], M.G.GOOD, 2000, 'de2en');
+    ok('getting a mastered word right changes no record',
+      JSON.stringify([...M.A.state.entries()]) === beforePass);
+    ok('and does not spend the day review budget',
+      (M.A.set.history[M.today()].rev || 0) === 0);
+    ok('but it is counted as a refresh',
+      M.A.set.history[M.today()].ref === 1, M.A.set.history[M.today()].ref);
+
+    // ---- missing one sends it back
+    const stBefore = Object.assign({}, M.A.state.get(pick[1].id));
+    M.gradeWord(pick[1], M.G.AGAIN, 2000, 'de2en');
+    const after = M.A.state.get(pick[1].id);
+    ok('missing a mastered word sends it back to relearning',
+      after.s === 'relearning', after.s);
+    ok('its interval is cut', after.i < stBefore.i, stBefore.i + ' -> ' + after.i);
+    ok('and the lapse is recorded', after.l === stBefore.l + 1);
+    ok('it is no longer mastered', !M.isMastered(after));
+    ok('still no review budget spent',
+      (M.A.set.history[M.today()].rev || 0) === 0);
+    ok('the refresh counts the loss', M.ST.lost === 1, M.ST.lost);
+
+    // a word retired after study comes back too, rather than falling through
+    M.gradeWord(pick[3], M.G.AGAIN, 2000, 'de2en');
+    ok('a retired word that is missed re-enters the queue',
+      M.A.state.get(pick[3].id).s === 'relearning', M.A.state.get(pick[3].id).s);
+
+    // ---- the Words filter uses the same test
+    {
+      const opts = [...w.document.querySelectorAll('#br-state option')].map(o => o.value);
+      ok('Words can filter to mastered', opts.includes('mastered'), opts.join(','));
+      M.A.state.clear();
+      put(pick[0], 'review', 30, 8); put(pick[5], 'learning', 0, 2);
+      w.document.getElementById('br-state').value = 'mastered';
+      w.document.getElementById('br-q').value = '';
+      M.renderBrowse();
+      const rows = [...w.document.querySelectorAll('#br-list .wrow')].map(r => +r.dataset.id);
+      ok('and lists only the mastered one',
+        rows.length === 1 && rows[0] === pick[0].id, rows.join(','));
+      w.document.getElementById('br-state').value = '';
+      M.renderBrowse();
+    }
+
+    M.ST.refresh = false;
+    M.A.state.clear();
+    for (const [k, v] of saveState) M.A.state.set(k, v);
+    M.A.set.history = saveHist;
+  }
+
   // ------------------------------------------------- daily review budget
   // The old cap limited a session, not a day, so finishing simply rebuilt the
   // queue and any card whose ten-minute step landed after the session ended
