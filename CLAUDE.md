@@ -224,6 +224,43 @@ changes. Phases 1, 2 and 3 are all shipped.
    was dropped in the minimalist rewrite). The suite now lints every `var()`
    in index.html against the declared tokens.
 
+28. **The app is built in the Ismael Design Language, branch True black, and
+    only that branch.** Source of truth: the Design System artifact
+    `https://claude.ai/artifact/Vg3C9o7oAdkH2JnGv4QMKi`. Never ship a theme
+    picker or a second palette — a control may change content, never the
+    branch. The rules that bite here:
+    - Colour comes only from the tokens in `:root`. No stray hex anywhere
+      else, app.js included.
+    - `accent` marks ONE idea per view and stays under about 10 % of the
+      pixels. At most one accent-filled `.btn` is visible at a time.
+    - `positive`, `caution` and `negative` are status only and always sit
+      beside a word, so meaning never depends on hue.
+    - CEFR level is one hue in four steps of rising luminance
+      (`--lv-a1` … `--lv-b2`), never four competing colours. Every step
+      clears 4.5:1 on the ground because the level is set as text.
+    - Square corners by default, `--r-1` (2 px) on controls, `--r-round`
+      only on status pills and dots.
+    - No gradients except the limb glow (`#ambient`), and no shadows at all —
+      a focus ring is an `outline`, never a `box-shadow`.
+    - Separate with space, a 1 px `--line` rule, or a 2 px `--ink` rule on
+      top. No boxed cards, no translucent glass, no `backdrop-filter`.
+    - Serif for headlines and the German being studied, sans for UI and
+      prose, mono for every label, unit and number (with `tabular-nums`).
+
+29. **Motion is the kit's grammar, scaled to a drill UI.** Entrances use
+    `--ease-out` (expo.out), mechanical moves `--ease-in-out`. Screens cut
+    hard and build inside themselves; one motion at a time, in reading order,
+    via the `--stag` delay. Nothing bounces, overshoots or oscillates — the
+    feed button's 1.28 scale pop and the wrong-tile shake were both replaced
+    with colour-only feedback. Five keyframes carry everything: `rise`,
+    `fade`, `draw`, `growy`, `sweep`. Rule 26 still governs every one of them.
+
+30. **The kit's two loadable parts cannot ship here.** The Google Fonts link
+    is a CDN dependency and the Bloom I lockup needs `IDL.lockup` from the
+    kit JS, so neither is used. The branch's own font stacks are kept
+    verbatim, which resolves to Palatino / Helvetica Neue / Menlo on iOS, and
+    the wordmark stays as type. Do not "fix" this by adding a font link.
+
 ---
 
 ## Layout

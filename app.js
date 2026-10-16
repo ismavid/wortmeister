@@ -507,9 +507,10 @@ const AUX_OVERRIDE = {
   verschwinden: 'sein', entstehen: 'sein', erscheinen: 'sein', auftreten: 'sein',
   zerbrechen: 'both', schmelzen: 'both', trocknen: 'both'
 };
-/* The ambient light behind the glass takes the colour of the current word's
-   level, so the card you are on is legible before you have read anything. */
-const LEVEL_TINT = { A1: '#30d158', A2: '#64d2ff', B1: '#ff9f0a', B2: '#bf5af2' };
+/* The limb glow behind the card takes the colour of the current word's level —
+   one hue, four steps of the ramp — so the card you are on is placed before you
+   have read anything. */
+const LEVEL_TINT = { A1: 'var(--lv-a1)', A2: 'var(--lv-a2)', B1: 'var(--lv-b1)', B2: 'var(--lv-b2)' };
 
 /* ============================ tiny DOM ============================ */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -547,7 +548,7 @@ function replayEnter(el) {
 
 function setTint(level) {
   const el = $('#ambient');
-  if (el) el.style.setProperty('--tint', LEVEL_TINT[level] || '#0a84ff');
+  if (el) el.style.setProperty('--tint', LEVEL_TINT[level] || 'var(--accent)');
 }
 /** The drifting background runs only while studying — it is the one place you
     look at a single screen for minutes, and it costs battery everywhere else. */
@@ -1909,8 +1910,9 @@ function renderHome() {
   const dayPct = o.dayTarget ? o.answered / o.dayTarget : 0;
   const lifePct = o.scoped ? Math.round(o.known / o.scoped * 100) : 0;
   $('#ringfill').setAttribute('stroke-dasharray', `${(dayPct * CIRC).toFixed(1)} ${CIRC}`);
-  $('#ringfill').setAttribute('stroke',
-    o.dayDone ? 'var(--green)' : 'var(--blue)');
+  // a presentation attribute loses to the stylesheet, so the finished day has
+  // to be a class the sheet can style rather than a stroke written here
+  $('#ringfill').classList.toggle('done', !!o.dayDone);
 
   // a tick at the minimum day, so a bad evening still has a visible target
   const tickAt = o.dayTarget ? Math.min(1, CFG.MIN_DAY / o.dayTarget) : 0;
@@ -1975,9 +1977,9 @@ function renderCounters(o) {
   const avg = recentPace(7);
   $('#s-actual').textContent = plural(avg, 'u.word', 'u.words');
   const tr = $('#s-track');
-  if (!o.triaged) { tr.textContent = T('stats.sortFirst'); tr.style.color = 'var(--gold)'; }
-  else if (avg >= o.need) { tr.textContent = T('stats.onTrack'); tr.style.color = 'var(--green)'; }
-  else { tr.textContent = T('stats.behind'); tr.style.color = 'var(--gold)'; }
+  if (!o.triaged) { tr.textContent = T('stats.sortFirst'); tr.style.color = 'var(--caution)'; }
+  else if (avg >= o.need) { tr.textContent = T('stats.onTrack'); tr.style.color = 'var(--positive)'; }
+  else { tr.textContent = T('stats.behind'); tr.style.color = 'var(--caution)'; }
   renderPace(o.need);
 }
 
@@ -2112,7 +2114,7 @@ function startTriage() {
 function nextTriage() {
   if (TG.i >= TG.list.length) {
     $('#tg-word').innerHTML =
-      '<span style="font-size:22px;color:var(--green)">All sorted</span>';
+      '<span style="font-size:22px;color:var(--positive)">All sorted</span>';
     $('#tg-count').textContent = '';
     $('#tg-meter').style.width = '100%';
     setTimeout(() => go('home'), 900);
@@ -2311,7 +2313,7 @@ function startStudy() {
   }
   if (!ST.queue.length) {
     $('#st-prompt').innerHTML =
-      '<span style="font-size:20px;color:var(--green)">Nothing due today</span>';
+      '<span style="font-size:20px;color:var(--positive)">Nothing due today</span>';
     $('#st-answer').classList.add('hidden');
     $('#st-gram').classList.add('hidden');
     $('#st-hint').textContent = T('st.comeBack');
@@ -2463,7 +2465,7 @@ function showCard() {
     const mins = Math.max(1, Math.round((Date.now() - ST.t0session) / CFG.MIN));
     const acc = ST.done ? Math.round((ST.done - ST.wrong) / ST.done * 100) : 100;
     $('#st-prompt').innerHTML =
-      `<span style="font-size:20px;color:var(--green)">Session complete</span>`;
+      `<span style="font-size:20px;color:var(--positive)">Session complete</span>`;
     $('#st-answer').classList.add('hidden');
     // end on what you achieved, not on a bare count
     $('#st-gram').innerHTML =
@@ -3390,7 +3392,7 @@ function renderBrowse() {
     return `<div class="wrow" data-id="${w.id}">
       <span class="pill p-${lv}">${lv}</span>
       <div><b>${esc(display(w))}</b><span>${esc(gloss(w))}</span></div>
-      <span style="color:var(--faint);font-size:16px;width:18px;text-align:center">${badge}</span>
+      <span style="color:var(--muted);font-size:16px;width:18px;text-align:center">${badge}</span>
     </div>`;
   }).join('') || `<div class="empty">${T('br.noMatch')}</div>`;
 }
@@ -3443,8 +3445,8 @@ function renderStats() {
   const fmt = ms => new Date(ms).toLocaleDateString(loc(),
     { day: 'numeric', month: 'short', year: 'numeric' });
   const projLabel = proj == null ? T('stats.noData') : fmt(Date.now() + proj * CFG.DAY);
-  const projColor = proj == null ? 'var(--dim)'
-    : (proj <= dte ? 'var(--green)' : 'var(--gold)');
+  const projColor = proj == null ? 'var(--muted)'
+    : (proj <= dte ? 'var(--positive)' : 'var(--caution)');
   const examLabel = fmt(new Date(A.set.exam + 'T09:00:00').getTime());
   const refToday = (A.set.history[today()] || {}).ref || 0;
 
@@ -3496,7 +3498,7 @@ function renderStats() {
         return `<div class="wrow" data-leech="${w.id}">
           <span class="pill p-${lv}">${lv}</span>
           <div><b>${esc(display(w))}</b><span>${esc(gloss(w))}</span></div>
-          <span style="color:var(--blue-lt);font-size:13px">${T('stats.restart')}</span>
+          <span style="color:var(--accent);font-size:13px">${T('stats.restart')}</span>
         </div>`;
       }).join('')}</div>
       <button class="btn ghost sm" id="leech-all" style="margin-top:10px">
@@ -3542,7 +3544,7 @@ function renderSettings() {
   $('#scope').innerHTML = Object.keys(A.set.scope).map(k =>
     `<label class="check"><input type="checkbox" data-scope="${k}"
        ${A.set.scope[k] ? 'checked' : ''}><span>${k}</span>
-     <b style="color:var(--dim);font-weight:700">${(counts[k] || 0).toLocaleString(loc())}</b></label>`
+     <b style="color:var(--muted);font-weight:700">${(counts[k] || 0).toLocaleString(loc())}</b></label>`
   ).join('');
   // CC BY 2.0 FR requires attribution wherever the sentences are used
   const nSent = Object.keys(A.sentences).length;
@@ -3674,7 +3676,7 @@ async function boot() {
     }
   } catch (e) {
     $('#splash').innerHTML =
-      `<div style="padding:24px;text-align:center;color:var(--red)">
+      `<div style="padding:24px;text-align:center;color:var(--negative)">
          <b>${T('err.title')}</b><br><span class="sub">${esc(e.message)}</span>
          <br><br><span class="sub">${T('err.load')}.</span></div>`;
     console.error(e);
