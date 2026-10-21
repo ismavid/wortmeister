@@ -269,7 +269,20 @@ changes. Phases 1, 2 and 3 are all shipped.
     elapsed time and is asserted by the suite: three 0.8 s `power2.inOut`
     transitions Z2 → Bloom I → Z1 → Z2, then Z2 rests 1.6 s, 4.0 s a loop,
     the long hold always at the end. Minimum size is 16 px static, 24 px
-    animated. It appears once per view: the splash and the Settings footer.
+    animated, and a mark that is not animating is always Z2 — `markOnce()`
+    settles it on Z2 even when it is stopped mid-morph. It appears at most
+    once per view, in three places: the splash (lockup, looping while the app
+    loads), Home (the mark alone, one cycle on arrival) and the Settings
+    footer (lockup, static). On Home it goes WITHOUT the name: that screen
+    already carries the Wortmeister wordmark, and a second name beside it
+    would read as a second product.
+
+32. **The splash is held for one full cycle (`MARK_SEG * 3`, 2.4 s).** Warm,
+    boot takes a few hundred ms, which showed the mark as a flash rather than
+    a mark. The hold ends on Z2 — cutting at 1.6 s would leave on Z1. A slow
+    boot has already spent the time and waits for nothing, and reduced motion
+    runs no cycle so it waits for nothing either. If this ever needs to go,
+    it is `heldSplash()` and nothing else depends on it.
 
 ---
 

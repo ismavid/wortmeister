@@ -2436,6 +2436,15 @@ function A_extendedSample(w){
     ok('the mark returns to Z2 exactly',
       mk.svg.querySelector('path').getAttribute('d') === atZ2);
 
+    // a mark that is not animating is Z2, however it stopped
+    const mk2 = M.buildMark(host, 32, 'var(--ink)', 'center');
+    const z2d = mk2.svg.querySelector('path').getAttribute('d');
+    mk2.set(1.4);
+    const stop = M.markOnce(mk2);
+    stop();
+    ok('stopping a cycle settles the mark on Z2, never mid-morph',
+      mk2.svg.querySelector('path').getAttribute('d') === z2d);
+
     // the lockup proportions, which the system fixes
     const host2 = w.document.createElement('div');
     w.document.body.appendChild(host2);

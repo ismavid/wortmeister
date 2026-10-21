@@ -1693,7 +1693,9 @@ function go(name) {
   $$('.view').forEach(v => v.classList.toggle('on', v.id === viewId));
   $$('.nav').forEach(n => $$('button', n).forEach(b =>
     b.classList.toggle('on', b.dataset.go === name)));
-  if (name === 'home') renderHome();
+  // the mark runs one cycle on arriving at Home and rests on Z2; leaving
+  // stops it, so no frame loop outlives the screen it belongs to
+  if (name === 'home') { renderHome(); homeMark(); } else stopHomeMark();
   if (name === 'feed') {
     renderFeed();
     // Safari refuses to speak outside a user gesture until it has spoken
@@ -2193,6 +2195,54 @@ function markLoop(mark) {
   };
   raf = requestAnimationFrame(tick);
   return () => { live = false; if (raf) cancelAnimationFrame(raf); };
+}
+
+/** One cycle, then rest on Z2 — the form a static use shows, and the one the
+    system says a cycle must end on. For a screen that is entered and left,
+    where an endless loop would only nag. Returns a stopper. */
+function markOnce(mark) {
+  if (reduceMotion() || typeof requestAnimationFrame !== 'function') {
+    mark.set(0);
+    return () => {};
+  }
+  const clock = (window.performance && window.performance.now)
+    ? () => window.performance.now() : () => Date.now();
+  const t0 = clock();
+  let raf = 0, live = true;
+  const tick = () => {
+    if (!live) return;
+    const el = clock() - t0;
+    if (el >= MARK_SEG * 3) { mark.set(0); return; }   // settled on Z2
+    mark.set(markPhase(el));
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  // leaving mid-cycle settles it rather than freezing it mid-morph: a mark
+  // that is not animating is always Z2
+  return () => {
+    live = false;
+    if (raf) cancelAnimationFrame(raf);
+    mark.set(0);
+  };
+}
+
+/** The mark in the Home title bar. It goes without the name: that screen
+    already carries the Wortmeister wordmark, and a second name beside it
+    would read as a second product. Sized to the headline's cap height and
+    spaced by the system's own quarter-of-the-mark gap. */
+let stopHomeMark = () => {};
+function homeMark() {
+  const host = $('#homemark');
+  if (!host) return;
+  if (!host.firstChild) {
+    const h1 = host.parentNode.querySelector('h1');
+    const fs = h1 ? parseFloat(getComputedStyle(h1).fontSize) || 34 : 34;
+    const mk = Math.round(fs * .7 * 1.25 / .96);
+    host.parentNode.style.gap = Math.round(mk * .96 * .25 - mk * .03) + 'px';
+    host.__mark = buildMark(host, mk, 'var(--ink)', 'right');
+  }
+  stopHomeMark();
+  stopHomeMark = markOnce(host.__mark);
 }
 
 /** The lockup: the mark beside the name, in the proportions the system sets.
@@ -3825,16 +3875,27 @@ $('#btn-reset').addEventListener('click', async () => {
 /* ============================ boot ============================ */
 /** Stops the splash mark when the splash goes, so no rAF outlives the view. */
 let stopMark = () => {};
+
+/** Wait out the rest of one full logo cycle before the title card is dropped.
+    Three transitions, no rest — 2.4 s — so the mark lands back on Z2. A slow
+    boot has already spent it and waits for nothing; reduced motion holds no
+    cycle, so it waits for nothing either. */
+function heldSplash(t0) {
+  if (reduceMotion()) return Promise.resolve();
+  const left = MARK_SEG * 3 - (Date.now() - t0);
+  return left > 0 ? new Promise(r => setTimeout(r, left)) : Promise.resolve();
+}
 async function boot() {
   try {
     // the splash is the app's title card, so it carries the lockup and the
-    // mark runs its cycle for as long as the load takes
+    // mark runs its cycle while the app loads
     // sized from the viewport, not pinned: 34 px on an iPhone 17 (402 pt),
     // 32 on a 375 pt phone, never under the 24 px floor the mark needs
     const lk = buildLockup($('#splashmark'),
       Math.round(Math.min(40, Math.max(26, (window.innerWidth || 390) * .085))),
       'var(--ink)');
     stopMark = markLoop(lk.mark);
+    const splashT0 = Date.now();
     await DB.open();
     A.set = Object.assign({}, JSON.parse(JSON.stringify(CFG.defaults)),
       (await DB.get('kv', 'settings')) || {});
@@ -3857,6 +3918,12 @@ async function boot() {
       speechSynthesis.addEventListener('voiceschanged', loadVoices);
     }
     go('home');
+    // Warm, the whole boot takes a few hundred ms, which shows the mark as a
+    // flash rather than a mark. Hold the title card until the cycle has run
+    // its three transitions and come back to rest on Z2 — the form a static
+    // use shows, and the one the system says a cycle must end on. Cutting at
+    // 1.6 s would leave on Z1 instead. Nothing waits on this but the splash.
+    await heldSplash(splashT0);
     stopMark();
     $('#splash').remove();
     // The sentence bank is another 313 KB and is only needed from rep 5, so it
@@ -3887,7 +3954,7 @@ window.__wm = {
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
-  MARK, MARK_SEG, markPhase, markLerp, markEase, buildMark, buildLockup,
+  MARK, MARK_SEG, markPhase, markLerp, markEase, buildMark, buildLockup, markOnce,
   gloss, glossLang, loadGlosses, posLabel,
   introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
   markIntroduced, isIntroduced, clearIntroduced,

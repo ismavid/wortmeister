@@ -703,7 +703,13 @@ select{appearance:none;-webkit-appearance:none}
    The mark beside the name, built only by buildLockup() so the proportions
    stay the system's. On this ground the mark is the colour of the name. The
    gap is set inline from the mark height; nothing here may override it. */
-.lockup{display:flex;align-items:center}
+.lockup,.brand{display:flex;align-items:center}
+/* Home carries the mark on its own — the wordmark beside it is the app's
+   name, not Ismael's, so this is deliberately not a lockup. The gap is set
+   inline from the mark height, by the same quarter-of-the-mark rule. */
+.brand{width:100%}
+.brand h1{flex:1;min-width:0}
+#homemark{flex:0 0 auto;display:flex;color:var(--ink)}
 .lockword{font:var(--serif-w) 1em/1 var(--serif);letter-spacing:-.02em;
   color:currentColor}
 /* the splash is the app's title card: the lockup enters as one phrase, then
@@ -728,7 +734,10 @@ select{appearance:none;-webkit-appearance:none}
 
   <!-- ============ HOME ============ -->
   <section id="v-home" class="view">
-    <div class="bar lg"><h1>Wortmeister</h1><span id="countdown" class="sub"></span></div>
+    <div class="bar lg">
+      <div class="brand"><div id="homemark"></div><h1>Wortmeister</h1></div>
+      <span id="countdown" class="sub"></span>
+    </div>
     <div class="scroll">
       <div class="ringwrap">
         <svg class="ring" viewBox="0 0 190 190" aria-hidden="true">
