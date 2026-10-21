@@ -113,6 +113,50 @@ function A_extendedSample(w){
       blind.length === 0, blind.join(' | '));
   }
 
+  // ---------------------------------------------------------- service worker
+  // wortmeister-v27 shipped the new index.html beside the PREVIOUS app.js:
+  // `addAll` fetches through the HTTP cache, so install precached a copy the
+  // CDN had already replaced, and cache-first then served that mismatched
+  // pair forever because it never missed. The page referenced an element the
+  // script that fills it did not know about.
+  console.log('\n== service worker ==');
+  {
+    const sw = fs.readFileSync(path.join(APP, 'sw.js'), 'utf8');
+    const idxHtml = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(APP, 'app.js'), 'utf8');
+
+    ok('the cache is versioned', /const CACHE = 'wortmeister-v\d+'/.test(sw),
+      (sw.match(/wortmeister-v\d+/) || ['?'])[0]);
+    ok('precaching bypasses the HTTP cache',
+      /addAll\([^)]*cache:\s*'reload'/s.test(sw));
+    // a bare caches.match() searches every cache in creation order and can
+    // return a copy from a version activate has not deleted yet
+    const code = sw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const bare = code.split('\n').filter(l => /\bcaches\.match\(/.test(l));
+    ok('every lookup is scoped to the current cache', bare.length === 0,
+      bare.join(' | '));
+
+    // anything the shell loads must be precached, or the app is not offline
+    const assets = (sw.match(/const ASSETS = \[([\s\S]*?)\]/) || [, ''])[1];
+    const listed = p => assets.includes("'./" + p + "'") || assets.includes("'" + p + "'");
+    const refs = [];
+    for (const m of idxHtml.matchAll(/<script[^>]+src="([^"]+)"/g)) refs.push(m[1]);
+    for (const m of idxHtml.matchAll(/<link[^>]+href="([^"]+)"/g)) refs.push(m[1]);
+    const external = refs.filter(r => /^(https?:)?\/\//.test(r));
+    ok('the shell loads nothing from another origin', external.length === 0,
+      external.join(', '));
+    const missing = refs.filter(r => !/^(https?:)?\/\//.test(r) && !listed(r));
+    ok('every file index.html loads is precached', missing.length === 0,
+      missing.join(', '));
+
+    // and every data file app.js fetches at runtime
+    const data = [];
+    for (const m of appJs.matchAll(/'(data\/[a-z0-9.\-]+\.json)'/gi)) data.push(m[1]);
+    const dmiss = [...new Set(data)].filter(d => !listed(d));
+    ok('every data file app.js fetches is precached', dmiss.length === 0,
+      dmiss.join(', '));
+  }
+
   // ---------------------------------------------------------- boot in jsdom
   console.log('\n== boot ==');
   const html = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');

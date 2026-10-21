@@ -66,10 +66,24 @@ changes. Phases 1, 2 and 3 are all shipped.
 9. **Settings writes are debounced.** `A.set` carries the medians and the full
    history map. Per-answer bookkeeping calls `queueSettings()`; only explicit
    edits call `saveSettings()` directly.
-10. **Bump `CACHE` in sw.js on every deploy that touches a precached asset.**
-   The service worker is cache-first, so a returning user otherwise gets the
-   new `index.html` with the old `app.js` — which fails in ways that look like
-   random breakage. This has already burned one debugging session.
+10. **Bump `CACHE` in sw.js on every deploy that touches a precached asset —
+   and know that the bump alone does not save you.** The failure this rule
+   warns about is the new `index.html` with the old `app.js`, which fails in
+   ways that look like random breakage. It then happened *again* with the
+   bump in place: `cache.addAll` fetches through the HTTP cache, so install
+   stored a copy of `app.js` the CDN had already replaced, and v27 held a
+   mismatched pair from birth. The page carried `#homemark` and the function
+   that fills it was not in the script. Cache-first served that pair forever,
+   because it never missed — and another bump cannot repair it, since the
+   bump is what creates the bad cache.
+
+   So: precache with `{cache: 'reload'}`; keep the shell (the page and
+   `app.js`) stale-while-revalidate so a mismatch costs one launch instead of
+   lasting until someone notices; leave the large immutable data files
+   cache-first; and never call a bare `caches.match()`, which searches every
+   cache in creation order and can return a version `activate` has not
+   deleted yet. The suite lints all of this, including that every file
+   `index.html` loads and every data file `app.js` fetches is in `ASSETS`.
 11. **`renderStats()` derives `modeReps` from `MODE_LABEL`.** Keep it that way.
    When the two lists were maintained by hand, a missing key made
    `undefined.toLocaleString()` throw and blanked the whole Stats screen.
