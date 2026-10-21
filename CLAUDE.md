@@ -255,11 +255,21 @@ changes. Phases 1, 2 and 3 are all shipped.
     with colour-only feedback. Five keyframes carry everything: `rise`,
     `fade`, `draw`, `growy`, `sweep`. Rule 26 still governs every one of them.
 
-30. **The kit's two loadable parts cannot ship here.** The Google Fonts link
-    is a CDN dependency and the Bloom I lockup needs `IDL.lockup` from the
-    kit JS, so neither is used. The branch's own font stacks are kept
-    verbatim, which resolves to Palatino / Helvetica Neue / Menlo on iOS, and
-    the wordmark stays as type. Do not "fix" this by adding a font link.
+30. **No Google Fonts link.** It is a CDN dependency the app cannot take.
+    The branch's own font stacks are kept verbatim, which resolves to
+    Palatino / Helvetica Neue / Menlo on iOS. Do not "fix" this by adding a
+    font link.
+
+31. **The Bloom I mark is the kit's geometry, not a drawing.** `MARK`,
+    `markLerp`, `markGeom` and the lockup proportions in app.js are copied
+    from `components/bundle.js` (`IDL.logo` / `IDL.lockup`, kit v1.3.0).
+    Never redraw, rotate, outline, box or recolour the mark; on this ground it
+    is the colour of the name, never accent. GSAP cannot be loaded, so the
+    cycle runs on rAF through `markPhase()`, which is a pure function of
+    elapsed time and is asserted by the suite: three 0.8 s `power2.inOut`
+    transitions Z2 → Bloom I → Z1 → Z2, then Z2 rests 1.6 s, 4.0 s a loop,
+    the long hold always at the end. Minimum size is 16 px static, 24 px
+    animated. It appears once per view: the splash and the Settings footer.
 
 ---
 

@@ -339,9 +339,15 @@ function A_extendedSample(w){
   ok('Easy graduates immediately', st2.s === 'review', st2.s);
   ok('Easy graduating interval is 5 days', st2.i === 5, st2.i);
 
-  // Good multiplies by ease
+  // Good multiplies by ease. Pinned to a far exam date: against the real one
+  // the cap clamps 25 days down to whatever is left before 11 Nov 2026, which
+  // is the cap working rather than the multiplication failing. The cap has its
+  // own assertions below.
+  const examAway = M.A.set.exam;
+  M.A.set.exam = '2099-01-01';
   let st3 = M.newState(); st3.s = 'review'; st3.i = 10; st3.e = 2.5;
   M.applyGrade(st3, M.G.GOOD, Date.now());
+  M.A.set.exam = examAway;
   ok('Good multiplies interval by ease', st3.i === 25, st3.i);
 
   // Hard shrinks ease and grows the interval only slightly
@@ -1221,18 +1227,33 @@ function A_extendedSample(w){
     (Math.max(...spread30) - Math.min(...spread30)) >
     (Math.max(...spread10) - Math.min(...spread10)));
 
-  // the point of the whole thing: identical cards must stop clumping
+  // The point of the whole thing: identical cards must stop clumping. Pinned
+  // to a far exam date, because within a few weeks of the real one the cap
+  // flattens every interval onto the same day — that is the cap doing its job,
+  // and it would hide whether the fuzz still spreads anything.
+  const clumpExam = M.A.set.exam;
+  M.A.set.exam = '2099-01-01';
   const clump = [];
   for (let n = 0; n < 200; n++) {
     const c = { s: 'review', e: 2.5, i: 10, d: 0, r: 5, l: 0, p: -1, m: {}, t: 0 };
     M.applyGrade(c, M.G.GOOD, Date.now());
     clump.push(c.i);
   }
+  M.A.set.exam = clumpExam;
   ok('200 identically-graded cards no longer land on one day',
     new Set(clump).size > 3, [...new Set(clump)].sort((a, b) => a - b).join(','));
-  ok('fuzz never schedules past the exam cap',
-    clump.every(i => i <= M.daysToExam()));
   ok('fuzz never produces a zero or negative interval', clump.every(i => i >= 1));
+
+  // and against the real exam date, nothing is ever scheduled past it
+  const capped = [];
+  for (let n = 0; n < 200; n++) {
+    const c = { s: 'review', e: 2.5, i: 10, d: 0, r: 5, l: 0, p: -1, m: {}, t: 0 };
+    M.applyGrade(c, M.G.GOOD, Date.now());
+    capped.push(c.i);
+  }
+  ok('fuzz never schedules past the exam cap',
+    capped.every(i => i <= M.daysToExam()),
+    Math.max(...capped) + ' vs ' + M.daysToExam());
 
   ok('the grade buttons still preview un-fuzzed intervals', (() => {
     const base = { s: 'review', e: 2.5, i: 10, d: 0, r: 5, l: 0, p: -1, m: {}, t: 0 };
@@ -2369,6 +2390,68 @@ function A_extendedSample(w){
   }
 
   // ---------------------------------------------------------- other views
+  // ------------------------------------------------- the mark: Bloom I
+  // The cycle cannot be watched here — requestAnimationFrame does not fire
+  // without a compositor — so it is asserted as a pure function of time
+  // instead, against the three forms and the timings the design system sets.
+  console.log('\n== the mark ==');
+  {
+    const seg = M.MARK_SEG;
+    ok('a transition is 0.8 s', seg === 800, seg);
+    ok('the cycle rests on Z2 at the end, not the start',
+      M.markPhase(seg * 3) === 3 && M.markPhase(seg * 4.9) === 3);
+    ok('one loop is 4.0 s', M.markPhase(seg * 5) === 0, M.markPhase(seg * 5));
+    ok('the three transitions land on their forms',
+      M.markPhase(0) === 0 && M.markPhase(seg) === 1 && M.markPhase(seg * 2) === 2);
+    ok('the morph is monotonic inside a transition',
+      [0, .2, .4, .6, .8, 1].map(f => M.markPhase(seg * f))
+        .every((v, i, a) => i === 0 || v >= a[i - 1]));
+    ok('the ease is the kit\'s cubic in-out',
+      Math.abs(M.markEase(.5) - .5) < 1e-9 &&
+      M.markEase(0) === 0 && M.markEase(1) === 1);
+
+    // the forms themselves, by the core radius the system gives each one
+    ok('Z2 is the resting form', M.markLerp(0).core === M.MARK.Z2.core &&
+      M.markLerp(3).core === M.MARK.Z2.core, M.markLerp(0).core);
+    ok('Bloom I sits between the other two',
+      M.markLerp(1).core === M.MARK.BI.core, M.markLerp(1).core);
+    ok('Z1 is the I-burst', M.markLerp(2).core === M.MARK.Z1.core, M.markLerp(2).core);
+    ok('every form has six rays', [0, 1, 2, 3]
+      .every(p => M.markLerp(p).r.length === 6));
+
+    // and the drawing: six rays, six caps and a core, visible before it moves
+    const host = w.document.createElement('div');
+    w.document.body.appendChild(host);
+    const mk = M.buildMark(host, 32, 'var(--ink)', 'right');
+    ok('the mark draws six rays', mk.svg.querySelectorAll('path').length === 6);
+    ok('the mark draws six caps and a core',
+      mk.svg.querySelectorAll('circle').length === 7);
+    const atZ2 = mk.svg.querySelector('path').getAttribute('d');
+    ok('the resting form is drawn before anything animates',
+      !!atZ2 && atZ2.length > 50);
+    mk.set(2);
+    ok('setting a later form redraws the geometry',
+      mk.svg.querySelector('path').getAttribute('d') !== atZ2);
+    mk.set(0);
+    ok('the mark returns to Z2 exactly',
+      mk.svg.querySelector('path').getAttribute('d') === atZ2);
+
+    // the lockup proportions, which the system fixes
+    const host2 = w.document.createElement('div');
+    w.document.body.appendChild(host2);
+    const lk = M.buildLockup(host2, 40, 'var(--ink)');
+    const mkPx = +lk.mark.svg.getAttribute('width');
+    ok('mark height is 1.25x the cap height',
+      mkPx === Math.round(40 * .7 * 1.25 / .96), mkPx);
+    ok('the gap is a quarter of the mark',
+      lk.el.style.gap === Math.round(mkPx * .96 * .25 - mkPx * .03) + 'px',
+      lk.el.style.gap);
+    ok('the name is set in the branch serif', lk.word.className === 'lockword');
+    ok('the lockup is never assembled from anything but the mark and the name',
+      lk.el.children.length === 2);
+    host.remove(); host2.remove();
+  }
+
   console.log('\n== other views ==');
   for (const v of ['browse', 'stats', 'settings', 'home']) {
     click(`[data-go="${v}"]`); await sleep(50);

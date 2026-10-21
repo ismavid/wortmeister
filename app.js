@@ -2033,6 +2033,185 @@ function installBanner() {
       T('install.share')}</p></div>`;
 }
 
+/* ======================= the mark: Bloom I =======================
+   The six-lobed radial mark built from Ismael's I. The three forms and every
+   number below are the design system's own (components/bundle.js, IDL.logo /
+   IDL.logoCycle, kit v1.3.0) — the mark is never redrawn by hand, and this is
+   the kit's geometry rather than a copy of its shape.
+
+   The kit drives the cycle with GSAP. GSAP is a CDN dependency this app
+   cannot take, so the three 0.8 s `power2.inOut` transitions run here against
+   requestAnimationFrame and the kit's own cubic-in-out curve. The sequence is
+   unchanged: Z2 → Bloom I → Z1 → Z2, three equal segments, then Z2 rests for
+   two segments. The long hold is always at the end and the cycle always
+   finishes on Z2, which is also the form a static use shows.
+
+   On a dark ground the mark is the same colour as the name — never accent. */
+const MARK = {
+  Z2: { core: 15, r: [[94, 38, 17], [36, 35, 16], [-24, 37, 17], [-86, 34, 16], [-146, 36, 17], [154, 35, 16]] },
+  BI: { core: 14.5, r: [[91, 41, 17], [33, 30, 16], [-33, 29, 15.5], [-89, 41, 17], [-147, 30, 16], [147, 29, 15.5]] },
+  Z1: { core: 9, r: [[92, 41, 14], [28, 22, 11.5], [-33, 25, 11.5], [-88, 42, 14], [-150, 21, 11.5], [152, 24, 11.5]] }
+};
+const MARK_SEQ = ['Z2', 'BI', 'Z1', 'Z2'];
+const MARK_N = 20;      // samples per ray edge
+const MARK_SEG = 800;   // ms per transition; the rest on Z2 is 2 x this
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+/** p runs 0..3 across the sequence; the fraction inside a step is the morph. */
+function markLerp(p) {
+  p = Math.max(0, Math.min(3, p));
+  const i = Math.min(2, Math.floor(p)), f = p - i;
+  const a = MARK[MARK_SEQ[i]], b = MARK[MARK_SEQ[i + 1]];
+  return {
+    core: a.core + (b.core - a.core) * f,
+    r: a.r.map((ra, k) => {
+      const rb = b.r[k];
+      return [ra[0] + (rb[0] - ra[0]) * f, ra[1] + (rb[1] - ra[1]) * f,
+              ra[2] + (rb[2] - ra[2]) * f];
+    })
+  };
+}
+
+function markBez(p, t) {
+  const u = 1 - t;
+  return [u * u * u * p[0][0] + 3 * u * u * t * p[1][0] + 3 * u * t * t * p[2][0] + t * t * t * p[3][0],
+          u * u * u * p[0][1] + 3 * u * u * t * p[1][1] + 3 * u * t * t * p[2][1] + t * t * t * p[3][1]];
+}
+
+/** Each ray is a bent tapered stroke with a rounded end, outlined as a path. */
+function markGeom(st, anchor) {
+  const rays = st.r.map((r, k) => {
+    const a = r[0] * Math.PI / 180, ux = Math.cos(a), uy = -Math.sin(a);
+    const nx = -uy, ny = ux, L = r[1], w = r[2], w1 = w - 2.2, bend = k % 2 ? -1 : 1;
+    const pt = (d, b) => [50 + ux * d + nx * b, 50 + uy * d + ny * b];
+    const P = [pt(0, 0), pt(L * .35, bend), pt(L * .7, bend * .8), pt(L, 0)];
+    const Lp = [], Rp = [];
+    for (let i = 0; i <= MARK_N; i++) {
+      const t = i / MARK_N;
+      const A = markBez(P, Math.max(0, t - 1e-3)), B = markBez(P, Math.min(1, t + 1e-3));
+      const c = markBez(P, t), dx = B[0] - A[0], dy = B[1] - A[1];
+      const d = Math.hypot(dx, dy) || 1, mx = -dy / d, my = dx / d;
+      const hw = (w + (w1 - w) * Math.pow(t, .8)) / 2;
+      Lp.push([c[0] + mx * hw, c[1] + my * hw]);
+      Rp.push([c[0] - mx * hw, c[1] - my * hw]);
+    }
+    return { pts: Lp.concat(Rp.reverse()), cap: [P[3][0], P[3][1], w1 / 2] };
+  });
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  rays.forEach(r => {
+    r.pts.forEach(q => {
+      x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]);
+      y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]);
+    });
+    x0 = Math.min(x0, r.cap[0] - r.cap[2]); x1 = Math.max(x1, r.cap[0] + r.cap[2]);
+    y0 = Math.min(y0, r.cap[1] - r.cap[2]); y1 = Math.max(y1, r.cap[1] + r.cap[2]);
+  });
+  // 'right' pins the mark's right edge so the gap to the name never moves
+  const dx = anchor === 'right' ? 97 - x1 : 50 - (x0 + x1) / 2, dy = 50 - (y0 + y1) / 2;
+  return {
+    rays: rays.map(r => ({
+      d: 'M' + r.pts.map(q => (q[0] + dx).toFixed(2) + ' ' + (q[1] + dy).toFixed(2)).join(' L') + 'Z',
+      cap: [r.cap[0] + dx, r.cap[1] + dy, r.cap[2]]
+    })),
+    core: [50 + dx, 50 + dy, st.core]
+  };
+}
+
+/** Build the mark at its resting form. It is visible before anything moves. */
+function buildMark(parent, size, color, anchor) {
+  const s = svgEl('svg', {
+    width: size, height: size, viewBox: '0 0 100 100',
+    role: 'img', 'aria-label': 'Ismael'
+  }, parent);
+  const paths = [], caps = [];
+  for (let i = 0; i < 6; i++) {
+    paths.push(svgEl('path', { fill: color }, s));
+    caps.push(svgEl('circle', { fill: color }, s));
+  }
+  const core = svgEl('circle', { fill: color }, s);
+  function set(p) {
+    const g = markGeom(markLerp(p), anchor);
+    g.rays.forEach((r, k) => {
+      paths[k].setAttribute('d', r.d);
+      caps[k].setAttribute('cx', r.cap[0].toFixed(2));
+      caps[k].setAttribute('cy', r.cap[1].toFixed(2));
+      caps[k].setAttribute('r', r.cap[2].toFixed(2));
+    });
+    core.setAttribute('cx', g.core[0].toFixed(2));
+    core.setAttribute('cy', g.core[1].toFixed(2));
+    core.setAttribute('r', g.core[2].toFixed(2));
+  }
+  set(0);
+  return { svg: s, set };
+}
+
+/** The kit's power2.inOut, so the morph matches every other piece Ismael has. */
+function markEase(x) {
+  return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+/** Reduced motion: the mark holds its resting form instead of cycling. */
+function reduceMotion() {
+  try { return !!(window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  catch (e) { return false; }
+}
+
+/** The cycle as a pure function of elapsed milliseconds, so it can be asserted
+    without a compositor: three eased transitions of one segment each, then Z2
+    rests for two segments. One loop is five segments — 4.0 s. The long hold is
+    at the end and the loop always passes through 3, which is Z2 again. */
+function markPhase(ms) {
+  const period = MARK_SEG * 5;
+  const el = ((ms % period) + period) % period;
+  if (el >= MARK_SEG * 3) return 3;
+  const step = Math.floor(el / MARK_SEG);
+  return step + markEase((el - step * MARK_SEG) / MARK_SEG);
+}
+
+/** Run the loop against the frame clock. Returns a stopper, so no rAF chain
+    outlives the view it was built for. */
+function markLoop(mark) {
+  if (reduceMotion() || typeof requestAnimationFrame !== 'function') {
+    return () => {};
+  }
+  const clock = (window.performance && window.performance.now)
+    ? () => window.performance.now() : () => Date.now();
+  const t0 = clock();
+  let raf = 0, live = true;
+  const tick = () => {
+    if (!live) return;
+    mark.set(markPhase(clock() - t0));
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => { live = false; if (raf) cancelAnimationFrame(raf); };
+}
+
+/** The lockup: the mark beside the name, in the proportions the system sets.
+    Mark height is 1.25x the cap height; the gap is a quarter of the mark. */
+function buildLockup(parent, fontSize, color) {
+  const mk = Math.round(fontSize * .7 * 1.25 / .96);
+  const g = document.createElement('div');
+  g.className = 'lockup';
+  g.style.gap = Math.round(mk * .96 * .25 - mk * .03) + 'px';
+  parent.appendChild(g);
+  const mark = buildMark(g, mk, color, 'right');
+  const word = document.createElement('div');
+  word.className = 'lockword';
+  word.style.fontSize = fontSize + 'px';
+  word.textContent = 'Ismael';
+  g.appendChild(word);
+  return { el: g, mark, word };
+}
+
 /* ======================= motion primitives =======================
    Springs, momentum projection and rubber-banding, hand-rolled because the
    app carries no runtime dependencies. Apple's model: think in damping ratio
@@ -3550,6 +3729,11 @@ function renderSettings() {
   const nSent = Object.keys(A.sentences).length;
   $('#ver').innerHTML = T('set.words', { n: nfmt(A.words.length) }) +
     (nSent ? '<br>' + T('set.sentences') : '');
+  // the footer is where the lockup lives on a page; static uses show Z2
+  const foot = $('#foot');
+  // 18 px of name puts the mark at 16 px, the floor the system sets for a
+  // static Z2; anything smaller loses the lobes
+  if (foot && !foot.firstChild) buildLockup(foot, 18, 'var(--muted)');
 }
 $('#set-exam').addEventListener('change', e => { A.set.exam = e.target.value; saveSettings(); });
 $('#set-new').addEventListener('change', e => { A.set.newPerDay = +e.target.value || 0; saveSettings(); });
@@ -3639,8 +3823,18 @@ $('#btn-reset').addEventListener('click', async () => {
 });
 
 /* ============================ boot ============================ */
+/** Stops the splash mark when the splash goes, so no rAF outlives the view. */
+let stopMark = () => {};
 async function boot() {
   try {
+    // the splash is the app's title card, so it carries the lockup and the
+    // mark runs its cycle for as long as the load takes
+    // sized from the viewport, not pinned: 34 px on an iPhone 17 (402 pt),
+    // 32 on a 375 pt phone, never under the 24 px floor the mark needs
+    const lk = buildLockup($('#splashmark'),
+      Math.round(Math.min(40, Math.max(26, (window.innerWidth || 390) * .085))),
+      'var(--ink)');
+    stopMark = markLoop(lk.mark);
     await DB.open();
     A.set = Object.assign({}, JSON.parse(JSON.stringify(CFG.defaults)),
       (await DB.get('kv', 'settings')) || {});
@@ -3663,6 +3857,7 @@ async function boot() {
       speechSynthesis.addEventListener('voiceschanged', loadVoices);
     }
     go('home');
+    stopMark();
     $('#splash').remove();
     // The sentence bank is another 313 KB and is only needed from rep 5, so it
     // loads after first paint. Until it arrives, cloze cards fall back to
@@ -3692,6 +3887,7 @@ window.__wm = {
   display, medianFor, pushTime, remainingToLearn, autoNewTarget,
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
+  MARK, MARK_SEG, markPhase, markLerp, markEase, buildMark, buildLockup,
   gloss, glossLang, loadGlosses, posLabel,
   introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
   markIntroduced, isIntroduced, clearIntroduced,

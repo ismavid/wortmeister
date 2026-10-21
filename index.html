@@ -19,8 +19,9 @@
    1. No Google Fonts link — the app must work offline with no CDN. The branch's
       own font stacks are kept verbatim, so iOS resolves Palatino / Helvetica
       Neue / Menlo instead of Literata / Instrument Sans / Geist Mono.
-   2. No Bloom I lockup — the mark may only be drawn by IDL.lockup, and the kit
-      JS cannot be loaded here. The wordmark stays as type.
+   2. The kit JS cannot be loaded, so the Bloom I mark is built from the
+      system's own geometry in app.js (buildMark / buildLockup) rather than
+      redrawn, and its cycle runs on rAF instead of GSAP.
 
    Motion follows the kit grammar: entrances on expo.out, mechanical moves on
    cubic in-out, hard cuts between screens and eases within them, one motion at
@@ -698,10 +699,19 @@ select{appearance:none;-webkit-appearance:none}
 .splash{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;
   justify-content:center;flex-direction:column;gap:var(--s4);z-index:100;
   color:var(--muted);font:400 12px/1.5 var(--mono);letter-spacing:.05em}
-.spin{width:26px;height:26px;border:2px solid var(--line);
-  border-top-color:var(--accent);border-radius:var(--r-round);
-  animation:sp .8s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
+/* ---------- the lockup ----------
+   The mark beside the name, built only by buildLockup() so the proportions
+   stay the system's. On this ground the mark is the colour of the name. The
+   gap is set inline from the mark height; nothing here may override it. */
+.lockup{display:flex;align-items:center}
+.lockword{font:var(--serif-w) 1em/1 var(--serif);letter-spacing:-.02em;
+  color:currentColor}
+/* the splash is the app's title card: the lockup enters as one phrase, then
+   the mark cycles for as long as the load takes */
+#splashmark{color:var(--ink);
+  animation:rise var(--dur-reveal) var(--ease-out) backwards}
+#foot{display:flex;justify-content:center;color:var(--muted);
+  margin-top:var(--s6)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 @media (prefers-reduced-motion:reduce){
@@ -711,7 +721,7 @@ select{appearance:none;-webkit-appearance:none}
 </head>
 <body>
 
-<div id="splash" class="splash"><div class="spin"></div><div id="splashmsg" data-i18n="loading">Loading vocabulary…</div></div>
+<div id="splash" class="splash"><div id="splashmark"></div><div id="splashmsg" data-i18n="loading">Loading vocabulary…</div></div>
 
 <div id="app">
   <div id="ambient"><i></i><i></i><i></i></div>
@@ -984,7 +994,8 @@ select{appearance:none;-webkit-appearance:none}
         <button class="btn ghost sm" id="btn-reset" data-i18n="set.reset">Reset everything</button>
         <input type="file" id="file-import" accept="application/json" class="hidden">
       </div>
-      <p class="sub" style="text-align:center;margin-top:26px" id="ver"></p>
+      <div id="foot"></div>
+      <p class="sub" style="text-align:center;margin-top:12px" id="ver"></p>
     </div>
     <nav class="nav"></nav>
   </section>
