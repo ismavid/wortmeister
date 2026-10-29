@@ -20,7 +20,7 @@
    every cache in creation order, which can hand back a copy from a version
    that activate has not deleted yet.
 */
-const CACHE = 'wortmeister-v28';
+const CACHE = 'wortmeister-v29';
 const ASSETS = [
   './', './index.html', './app.js', './manifest.webmanifest',
   './data/vocab.v1.json', './data/sentences.v1.json', './data/glosses.es.v1.json', './icons/icon-192.png', './icons/icon-512.png'
