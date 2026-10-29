@@ -1175,6 +1175,25 @@ function A_extendedSample(w){
       return r;
     })());
 
+    // cards that state a meaning show both languages, same size, two shades
+    M.A.set.lang = 'en';
+    const both = M.meaningsHTML(sample);
+    ok('a card shows English and Spanish together',
+      both.includes(M.esc(sample.en)) && both.includes(M.esc(bank.es[0])), both);
+    ok('English first in English, in the primary shade',
+      both.indexOf('>EN<') < both.indexOf('>ES<') && /class="m1"><i>EN</.test(both), both);
+    M.A.set.lang = 'es';
+    ok('Spanish first in Spanish',
+      /class="m1"><i>ES</.test(M.meaningsHTML(sample)), M.meaningsHTML(sample));
+    M.A.set.lang = 'en';
+    if (missing) {
+      ok('an untranslated word renders one plain gloss, as before',
+        M.meaningsHTML(missing) === M.esc(missing.en), M.meaningsHTML(missing));
+    }
+    ok('meanings are spans, so they nest inside <small>',
+      !/<div/.test(both));
+    M.A.set.lang = 'es';
+
     // the German side is never touched
     ok('German lemmas are untouched by the gloss bank',
       M.A.words[500].lemma === 'informieren');

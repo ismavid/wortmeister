@@ -51,6 +51,12 @@ changes. Phases 1, 2 and 3 are all shipped.
      English for anything uncovered and `modeLabel(k, w)` says `Alemán →
      Inglés` for that card, so the pill never promises a translation that is
      not there. Never inline Spanish into `vocab.v1.json`.
+   - **Six card types show BOTH meanings** (29 Oct 2026): `de2en`, `en2de`,
+     `type`, `hint`, `article`, `verb`, through `meaningsHTML(w)`. Same size;
+     the interface language first in `--ink` (`--accent` inside the revealed
+     answer), the other in `--muted`, each behind a mono `EN`/`ES` tag so the
+     shade is never the only cue. Display only — nothing is stored. A word the
+     Spanish bank does not cover renders one plain English gloss, as before.
    - Numbers and dates follow `loc()`, not a hardcoded `'en'`/`'en-GB'`.
 6. **Dark theme, mobile-first.** Minimum tap target 48px. Controls live in the
    thumb-reachable bottom third. Test at 375px wide.
@@ -310,7 +316,7 @@ manifest.webmanifest    PWA manifest
 data/vocab.v1.json      10,390 words, columnar, 1.0 MB (~247 KB gzipped)
 data/sentences.v1.json  9,240 cloze sentences (Tatoeba, CC BY 2.0 FR)
 data/glosses.es.v1.json 7,035 Spanish meanings, keyed by the same ids (172 KB)
-test/test_app.js        633 assertions, jsdom + fake-indexeddb
+test/test_app.js        663 assertions, jsdom + fake-indexeddb
 test/test_compat.js     22 assertions — progress must survive every change
 docs/PLAN.md            design doc: pacing maths, algorithm, phases
 tools/vocab-build/      Python pipeline that produced the data (optional)
@@ -381,7 +387,7 @@ re-enter the same session, which is what makes the 10-minute step work.
 ## Tests — run these before claiming anything works
 
 ```bash
-cd test && npm install && npm test     # expect: 633 passed, then 22 passed
+cd test && npm install && npm test     # expect: 663 passed, then 22 passed
 ```
 
 The suite boots the real `index.html` + `app.js` in jsdom against a fake

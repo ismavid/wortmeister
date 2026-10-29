@@ -67,9 +67,10 @@ const HINT_MAX = HINT_SHARE.length - 1;
 const GENDER_SHAPE = { der: '▲', die: '●', das: '■' };
 
 /* ============================ language ============================
-   The interface speaks English or Spanish; the vocabulary does not. Word
-   meanings stay English because `en` is the only gloss the data carries, so
-   switching language must never imply the cards themselves were translated.
+   The interface speaks English or Spanish; the German vocabulary does not.
+   Meanings come from two places: `en` in vocab.v1.json and the separate
+   Spanish bank, keyed by the same ids. A word the bank does not cover keeps
+   its English gloss, one card at a time.
 
    `lang` is a settings field defaulting to 'en', so an existing install reads
    as English without its stored settings being rewritten — boot never saves,
@@ -223,7 +224,7 @@ const I18N = {
     'set.voice': 'Voice', 'set.readAloud': 'Read answers aloud',
     'set.voiceSub': 'German answers are read in German, English answers in English. Tap a revealed answer to hear it again.',
     'set.language': 'Language',
-    'set.languageSub': 'Interface language only. Word meanings stay in English — that is the only gloss the vocabulary data carries.',
+    'set.languageSub': 'Interface language. Cards show the meaning in English and Spanish either way; this decides which comes first.',
     'set.whatToStudy': 'What to study',
     'set.data': 'Data',
     'set.dataSub': 'Safari deletes website data after 7 days. Apps added to the Home Screen are exempt — but back up regularly anyway.',
@@ -411,7 +412,7 @@ const I18N = {
     'set.voice': 'Voz', 'set.readAloud': 'Leer las respuestas en voz alta',
     'set.voiceSub': 'Las respuestas en alemán se leen en alemán, y las respuestas en inglés en inglés. Toca una respuesta revelada para volver a escucharla.',
     'set.language': 'Idioma',
-    'set.languageSub': 'Solo el idioma de la interfaz. Los significados siguen en inglés — es la única traducción que traen los datos del vocabulario.',
+    'set.languageSub': 'Idioma de la interfaz. Las tarjetas muestran el significado en inglés y en español en ambos casos; esto decide cuál va primero.',
     'set.whatToStudy': 'Qué estudiar',
     'set.data': 'Datos',
     'set.dataSub': 'Safari borra los datos del sitio a los 7 días. Las apps añadidas a la pantalla de inicio están exentas, pero haz copias de seguridad igual.',
@@ -872,6 +873,27 @@ function gloss(w) {
 /** The language `gloss()` actually returned, so speech reads it correctly. */
 function glossLang(w) {
   return (lang() === 'es' && A.glosses[w.id]) ? 'es-ES' : 'en-US';
+}
+
+/**
+ * Both meanings on one card, for the six modes that state a meaning outright.
+ * Ismael asked on 29 Oct 2026 to see Spanish beside the English whatever the
+ * interface is set to — a second anchor in the language he thinks in makes an
+ * ambiguous English gloss ("line", "to set") point at one German word.
+ *
+ * Same size for both; the interface language comes first in ink and the other
+ * follows in muted, each tagged EN / ES so the difference never rests on shade
+ * alone. Spans, not divs, because this lands inside a <small> too. A word the
+ * Spanish bank does not cover renders exactly as it did before: one plain gloss.
+ */
+function meaningsHTML(w) {
+  const es = A.glosses[w.id];
+  if (!es) return esc(w.en);
+  const rows = [['EN', w.en], ['ES', es]];
+  if (lang() === 'es') rows.reverse();
+  return '<span class="means">' + rows.map((r, n) =>
+    '<span class="m' + (n + 1) + '"><i>' + r[0] + '</i>' + esc(r[1]) + '</span>').join('') +
+    '</span>';
 }
 
 /** Sentences available for a word, or null. */
@@ -2763,7 +2785,7 @@ function showCard() {
   } else if (ST.mode === 'hint') {
     const lvl = hintLevel(getState(w.id));
     ST.hintLvl = lvl;
-    $('#st-prompt').innerHTML = esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-prompt').innerHTML = meaningsHTML(w) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-mask').innerHTML = hintMask(w, lvl)
       .replace(/·/g, '<i>·</i>').replace(/ /g, '&nbsp;');
     $('#st-mask').classList.remove('hidden');
@@ -2777,7 +2799,7 @@ function showCard() {
     $('#st-typepad').classList.remove('hidden');
     inp.focus();
   } else if (ST.mode === 'type') {
-    $('#st-prompt').innerHTML = esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-prompt').innerHTML = meaningsHTML(w) + '<small>' + esc(posLabel(w.pos)) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = isDrillableNoun(w)
       ? T('st.includeArticle') : T('st.typeGermanAria');
@@ -2787,12 +2809,12 @@ function showCard() {
     $('#st-typepad').classList.remove('hidden');
     inp.focus();
   } else if (ST.mode === 'article') {
-    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(gloss(w)) + '</small>';
+    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + meaningsHTML(w) + '</small>';
     $('#st-answer').innerHTML = displayMarked(w);
     $('#st-hint').textContent = T('st.whichArticle');
     $('#st-artpad').classList.remove('hidden');
   } else if (ST.mode === 'verb') {
-    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + esc(gloss(w)) + '</small>';
+    $('#st-prompt').innerHTML = esc(w.lemma) + '<small class="gloss">' + meaningsHTML(w) + '</small>';
     $('#st-answer').innerHTML = esc(verbFormsLine(w));
     $('#st-hint').textContent = T('st.verbSub');
     $('#st-vprt').value = ''; $('#st-vprt').disabled = false;
@@ -2825,8 +2847,8 @@ function showCard() {
   } else {
     $('#st-prompt').innerHTML = ST.mode === 'de2en'
       ? esc(display(w))
-      : esc(gloss(w)) + '<small>' + esc(posLabel(w.pos)) + '</small>';
-    $('#st-answer').innerHTML = ST.mode === 'de2en' ? esc(gloss(w)) : displayMarked(w);
+      : meaningsHTML(w) + '<small>' + esc(posLabel(w.pos)) + '</small>';
+    $('#st-answer').innerHTML = ST.mode === 'de2en' ? meaningsHTML(w) : displayMarked(w);
     $('#st-hint').textContent = T('st.tapReveal');
     $('#st-pad').classList.remove('hidden');
   }
@@ -3955,7 +3977,7 @@ window.__wm = {
   overview, nextAction, renderCounters, MODE_LABEL, milestone, renderMilestone,
   I18N, T, lang, loc, nfmt, plural, modeLabel, applyI18n, LANGS,
   MARK, MARK_SEG, markPhase, markLerp, markEase, buildMark, buildLockup, markOnce,
-  gloss, glossLang, loadGlosses, posLabel,
+  gloss, glossLang, meaningsHTML, loadGlosses, posLabel,
   introHTML, introForms, introSentence, displayHead, AUTO_MODES, esc,
   markIntroduced, isIntroduced, clearIntroduced,
   reviewBudget, isFragile, migrateReviewCap,
